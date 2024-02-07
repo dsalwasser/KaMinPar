@@ -52,9 +52,13 @@
 #ifdef KAMINPAR_ENABLE_TIMERS
 #define ENABLE_TIMERS() (GLOBAL_TIMER.enable())
 #define DISABLE_TIMERS() (GLOBAL_TIMER.disable())
+#define PAUSE_TIMERS() (GLOBAL_TIMER.pause())
+#define RESUME_TIMERS() (GLOBAL_TIMER.resume())
 #else // KAMINPAR_ENABLE_TIMERS
 #define ENABLE_TIMERS()
 #define DISABLE_TIMERS()
+#define PAUSE_TIMERS()
+#define RESUME_TIMERS()
 #endif // KAMINPAR_ENABLE_TIMERS
 
 #define SCOPED_TIMER(...)                                                                          \
@@ -226,6 +230,23 @@ public:
     return start_scoped_timer<const char *>(name, "");
   }
 
+  void pause() {
+    std::lock_guard<std::mutex> lg(_mutex);
+    ++_disabled;
+
+    _paused_time_point = timer::now();
+  }
+
+  void resume() {
+    std::lock_guard<std::mutex> lg(_mutex);
+    --_disabled;
+
+    TimePoint now = timer::now();
+    for (TimerTreeNode *node = _tree.current; node != nullptr; node = node->parent) {
+      node->start += now - _paused_time_point;
+    }
+  }
+
   void enable() {
     std::lock_guard<std::mutex> lg(_mutex);
     _disabled = std::max(0, _disabled - 1);
@@ -295,6 +316,7 @@ private:
   TimerTree _tree;
   std::mutex _mutex;
   int _disabled = 0;
+  TimePoint _paused_time_point;
 
   std::size_t _hr_time_col = 0;
   std::size_t _hr_max_time_len = 0;
@@ -315,7 +337,7 @@ public:
 
   explicit TimedScope(Timer *timer, std::string_view name) : TimedScope(timer, name, "") {}
 
-  template <typename F> decltype(auto) operator+(F &&f) {
+  template <typename F> decltype(auto) operator+(F && f) {
 #ifdef KAMINPAR_ENABLE_TIMERS
     const auto scope = _timer->start_scoped_timer<String>(_name, _description);
 #endif // KAMINPAR_ENABLE_TIMERS

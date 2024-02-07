@@ -181,9 +181,13 @@ EdgeWeight KaMinPar::compute_partition(const BlockID k, BlockID *partition) {
 
   START_TIMER("Partitioning");
   if (_ctx.rearrange_by == GraphOrdering::DEGREE_BUCKETS && !_was_rearranged) {
+    // Pause timers for the experiments since the compared KaMinPar version uses graphs which are
+    // implicitly stored with degree bucket order.
+    PAUSE_TIMERS();
     _graph_ptr =
         std::make_unique<Graph>(graph::rearrange_by_degree_buckets(_ctx, std::move(*_graph_ptr)));
     _was_rearranged = true;
+    RESUME_TIMERS();
   }
 
   // Perform actual partitioning
