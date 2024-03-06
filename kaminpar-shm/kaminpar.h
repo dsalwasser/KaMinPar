@@ -298,6 +298,8 @@ private:
 };
 
 struct PartitionContext {
+  bool lazy_init_balancer;
+
   double epsilon;
   BlockID k;
 
@@ -369,6 +371,8 @@ struct GraphCompressionContext {
 };
 
 struct Context {
+  bool subgraph_memory_fix;
+
   GraphCompressionContext compression;
   NodeOrdering node_ordering;
   EdgeOrdering edge_ordering;

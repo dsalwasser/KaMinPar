@@ -107,6 +107,17 @@ The output should be stored in a file and can be used by the -C,--config option.
   - parhip)")
       ->capture_default_str();
 
+  cli.add_option(
+      "--min-opt-lazy-init-balancer",
+      ctx.partition.lazy_init_balancer,
+      "Whether to lazily initialize the greedy balancer."
+  );
+  cli.add_option(
+      "--min-opt-subgraph-memory-fix",
+      ctx.subgraph_memory_fix,
+      "Whether to allocate the subgraph memory with minimal size."
+  );
+
   if constexpr (kHeapProfiling) {
     auto *hp_group = cli.add_option_group("Heap Profiler");
 

@@ -31,7 +31,7 @@ bool GreedyBalancer::refine(PartitionedGraph &p_graph, const PartitionContext &p
   }
 
   // Lazy initialize the balancer
-  {
+  if (p_ctx.lazy_init_balancer) {
     SCOPED_HEAP_PROFILER("Greedy Balancer Allocation");
     SCOPED_TIMER("Greedy Balancer Allocation");
 

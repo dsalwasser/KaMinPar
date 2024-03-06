@@ -89,7 +89,16 @@ public:
     }
   };
 
-  GreedyBalancer(const Context &ctx) : _max_k(ctx.partition.k) {}
+  GreedyBalancer(const Context &ctx) : _max_k(ctx.partition.k) {
+    if (!ctx.partition.lazy_init_balancer) {
+      SCOPED_HEAP_PROFILER("Greedy Balancer Allocation");
+      SCOPED_TIMER("Greedy Balancer Allocation");
+
+      _marker.resize(ctx.partition.n);
+      _pq.init(ctx.partition.n, ctx.partition.k);
+      _pq_weight.resize(ctx.partition.k);
+    }
+  }
 
   GreedyBalancer &operator=(const GreedyBalancer &) = delete;
   GreedyBalancer(const PartitionedGraph &) = delete;

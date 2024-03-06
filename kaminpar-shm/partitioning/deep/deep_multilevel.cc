@@ -28,7 +28,11 @@ DeepMultilevelPartitioner::DeepMultilevelPartitioner(
       _input_ctx(input_ctx),
       _current_p_ctx(input_ctx.partition),
       _coarsener(factory::create_coarsener(input_graph, input_ctx.coarsening)),
-      _refiner(factory::create_refiner(input_ctx)) {}
+      _refiner(factory::create_refiner(input_ctx)) {
+  if (!input_ctx.subgraph_memory_fix) {
+    _subgraph_memory.resize(input_graph.n(), input_ctx.partition.k, input_graph.m());
+  }
+}
 
 PartitionedGraph DeepMultilevelPartitioner::partition() {
   cio::print_delimiter("Partitioning");
@@ -151,7 +155,7 @@ const Graph *DeepMultilevelPartitioner::coarsen() {
     // bipartitioning
     // To avoid repeated allocation, we pre-allocate the memory during coarsening for the largest
     // coarse graph for which we still need recursive bipartitioning
-    if (_subgraph_memory.empty() &&
+    if (_input_ctx.subgraph_memory_fix && _subgraph_memory.empty() &&
         helper::compute_k_for_n(c_graph->n(), _input_ctx) < _input_ctx.partition.k) {
       _subgraph_memory.resize(prev_c_graph_n, _input_ctx.partition.k, prev_c_graph_m, true, true);
     }
@@ -170,7 +174,7 @@ const Graph *DeepMultilevelPartitioner::coarsen() {
     LOG;
   }
 
-  if (_subgraph_memory.empty()) {
+  if (_input_ctx.subgraph_memory_fix && _subgraph_memory.empty()) {
     _subgraph_memory.resize(prev_c_graph_n, _input_ctx.partition.k, prev_c_graph_m, true, true);
   }
 

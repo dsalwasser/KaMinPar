@@ -49,19 +49,21 @@ std::unordered_set<std::string> get_preset_names() {
 
 Context create_default_context() {
   return {
+      .subgraph_memory_fix = false,
       .compression = {.enabled = false, .may_dismiss = false},
       .node_ordering = NodeOrdering::DEGREE_BUCKETS,
       .edge_ordering = EdgeOrdering::NATURAL,
       .partitioning =
           {
               .mode = PartitioningMode::DEEP,
-              .max_mem_free_coarsening_level = 100,
+              .max_mem_free_coarsening_level = 0,
               .deep_initial_partitioning_mode = InitialPartitioningMode::ASYNCHRONOUS_PARALLEL,
               .deep_initial_partitioning_load = 1.0,
           },
       .partition =
           {
               // Context -> Partition
+              .lazy_init_balancer = false,
               .epsilon = 0.03,
               .k = kInvalidBlockID /* must be set */,
           },
