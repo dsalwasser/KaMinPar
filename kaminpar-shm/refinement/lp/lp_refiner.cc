@@ -130,7 +130,43 @@ public:
     return _p_ctx->block_weights.max(block);
   }
 
-  bool accept_cluster(const Base::ClusterSelectionState &state) {
+  [[nodiscard]] bool accept_cluster1(const Base::ClusterSelectionState &state) {
+    const NodeWeight current_max_weight = max_cluster_weight(state.current_cluster);
+    const NodeWeight current_overload = state.current_cluster_weight - current_max_weight;
+    const NodeWeight initial_overload =
+        state.initial_cluster_weight - max_cluster_weight(state.initial_cluster);
+
+    return state.current_cluster_weight + state.u_weight < current_max_weight ||
+           current_overload < initial_overload || state.current_cluster == state.initial_cluster;
+  }
+
+  [[nodiscard]] bool accept_cluster2(const Base::ClusterSelectionState &state) {
+    const NodeWeight current_max_weight = max_cluster_weight(state.current_cluster);
+    const NodeWeight best_overload =
+        state.best_cluster_weight - max_cluster_weight(state.best_cluster);
+    const NodeWeight current_overload = state.current_cluster_weight - current_max_weight;
+    const NodeWeight initial_overload =
+        state.initial_cluster_weight - max_cluster_weight(state.initial_cluster);
+
+    return (current_overload < best_overload) &&
+           (state.current_cluster_weight + state.u_weight < current_max_weight ||
+            current_overload < initial_overload || state.current_cluster == state.initial_cluster);
+  }
+
+  [[nodiscard]] bool accept_cluster3(const Base::ClusterSelectionState &state) {
+    const NodeWeight current_max_weight = max_cluster_weight(state.current_cluster);
+    const NodeWeight best_overload =
+        state.best_cluster_weight - max_cluster_weight(state.best_cluster);
+    const NodeWeight current_overload = state.current_cluster_weight - current_max_weight;
+    const NodeWeight initial_overload =
+        state.initial_cluster_weight - max_cluster_weight(state.initial_cluster);
+
+    return (current_overload == best_overload) &&
+           (state.current_cluster_weight + state.u_weight < current_max_weight ||
+            current_overload < initial_overload || state.current_cluster == state.initial_cluster);
+  }
+
+  [[nodiscard]] bool accept_cluster(const Base::ClusterSelectionState &state) {
     static_assert(std::is_signed_v<NodeWeight>);
 
     const NodeWeight current_max_weight = max_cluster_weight(state.current_cluster);

@@ -12,6 +12,7 @@
 #include <vector>
 
 #include <tbb/enumerable_thread_specific.h>
+#include <tbb/parallel_for.h>
 
 #include "kaminpar-common/heap_profiler.h"
 #include "kaminpar-common/parallel/aligned_element.h"
@@ -45,7 +46,7 @@ public:
    *
    * @return The capacity of this array.
    */
-  std::size_t capacity() const {
+  [[nodiscard]] std::size_t capacity() const {
     return _data.capacity();
   }
 

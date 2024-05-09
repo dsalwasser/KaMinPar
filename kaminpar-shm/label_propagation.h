@@ -247,6 +247,7 @@ protected:
     _graph = graph;
     _initial_num_clusters = num_clusters;
     _current_num_clusters = num_clusters;
+    _local_cluster_selection_states.resize(tbb::this_task_arena::max_concurrency());
     reset_state();
   }
 
@@ -334,7 +335,12 @@ protected:
    * the previous cluster is now empty.
    */
   template <bool first_phase = true, typename RatingMap>
-  std::pair<bool, bool> handle_node(const NodeID u, Random &rand, RatingMap &rating_map) {
+  std::pair<bool, bool> handle_node(
+      const NodeID u,
+      Random &rand,
+      RatingMap &rating_map,
+      std::vector<ClusterID> &tie_breaking_clusters
+  ) {
     if (derived_skip_node(u)) {
       return {false, false};
     }
@@ -373,7 +379,7 @@ protected:
       }
 
       const auto opt_move = rating_map.execute(upper_bound_size, [&](auto &map) {
-        return find_best_cluster(u, u_weight, u_cluster, rand, map);
+        return find_best_cluster(u, u_weight, u_cluster, rand, map, tie_breaking_clusters);
       });
 
       if (opt_move.has_value()) {
@@ -381,8 +387,9 @@ protected:
         return move_node(best_cluster, gain);
       }
     } else {
-      const auto [best_cluster, gain] =
-          *find_best_cluster<false>(u, u_weight, u_cluster, rand, rating_map);
+      const auto [best_cluster, gain] = *find_best_cluster<false>(
+          u, u_weight, u_cluster, rand, rating_map, tie_breaking_clusters
+      );
       return move_node(best_cluster, gain);
     }
 
@@ -403,6 +410,13 @@ protected:
     ClusterWeight current_cluster_weight;
   };
 
+  struct LocalClusterSelectionState {
+    EdgeWeight best_gain;
+    ClusterID best_cluster;
+    EdgeWeight favored_cluster_gain;
+    ClusterID favored_cluster;
+  };
+
   /*!
    * Computes the best feasible cluster for a node.
    *
@@ -420,7 +434,8 @@ protected:
       const NodeWeight u_weight,
       const ClusterID u_cluster,
       Random &rand,
-      RatingMap &map
+      RatingMap &map,
+      std::vector<ClusterID> &tie_breaking_clusters
   ) {
     const ClusterWeight initial_cluster_weight = derived_cluster_weight(u_cluster);
     ClusterSelectionState state{
@@ -564,25 +579,9 @@ protected:
     const EdgeWeight gain_delta = (Config::kUseActualGain) ? map[u_cluster] : 0;
 
     if constexpr (first_phase) {
-      for (const auto [cluster, rating] : map.entries()) {
-        state.current_cluster = cluster;
-        state.current_gain = rating - gain_delta;
-        state.current_cluster_weight = derived_cluster_weight(cluster);
-
-        if (store_favored_cluster && state.current_gain > state.best_gain) {
-          favored_cluster = state.current_cluster;
-        }
-
-        if (derived_accept_cluster(state)) {
-          state.best_cluster = state.current_cluster;
-          state.best_cluster_weight = state.current_cluster_weight;
-          state.best_gain = state.current_gain;
-        }
-      }
+      favored_cluster =
+          select_best_cluster(store_favored_cluster, state, map, tie_breaking_clusters);
     } else {
-      std::vector<std::tuple<EdgeWeight, ClusterID, EdgeWeight, ClusterID>> local_values;
-      local_values.resize(tbb::this_task_arena::max_concurrency());
-
       map.iterate_and_reset([&](const auto i, const auto &used_entries) {
         ClusterSelectionState local_state{
             .local_rand = Random::instance(),
@@ -597,49 +596,34 @@ protected:
             .current_gain = 0,
             .current_cluster_weight = 0,
         };
-        ClusterID local_favored_cluster_gain = 0;
-        ClusterID local_favored_cluster = u_cluster;
 
-        for (const ClusterID cluster : used_entries) {
-          const EdgeWeight rating = map[cluster];
+        const ClusterID local_favored_cluster = select_best_cluster(
+            store_favored_cluster, local_state, used_entries, _tie_breaking_clusters_ets.local()
+        );
+        const EdgeWeight local_favored_cluster_gain = map[local_favored_cluster] - gain_delta;
 
-          local_state.current_cluster = cluster;
-          local_state.current_gain = rating - gain_delta;
-          local_state.current_cluster_weight = derived_cluster_weight(cluster);
-
-          if (store_favored_cluster && local_state.current_gain > local_state.best_gain) {
-            local_favored_cluster_gain = local_state.current_cluster;
-            local_favored_cluster = local_state.current_cluster;
-          }
-
-          if (derived_accept_cluster(local_state)) {
-            local_state.best_cluster = local_state.current_cluster;
-            local_state.best_cluster_weight = local_state.current_cluster_weight;
-            local_state.best_gain = local_state.current_gain;
-          }
-        }
-
-        local_values[i] = std::make_tuple(
+        _local_cluster_selection_states[i] = {
             local_state.best_gain,
             local_state.best_cluster,
             local_favored_cluster_gain,
-            local_favored_cluster
-        );
+            local_favored_cluster,
+        };
       });
 
       EdgeWeight favored_cluster_gain = 0;
-      for (auto const [best_gain, best_cluster, local_favored_cluster_gain, local_favored_cluster] :
-           local_values) {
-        if (best_gain > state.best_gain) {
-          state.best_gain = best_gain;
-          state.best_cluster = best_cluster;
+      for (const LocalClusterSelectionState local_state : _local_cluster_selection_states) {
+        if (local_state.best_gain > state.best_gain) {
+          state.best_gain = local_state.best_gain;
+          state.best_cluster = local_state.best_cluster;
         }
 
-        if (store_favored_cluster && local_favored_cluster_gain > favored_cluster_gain) {
-          favored_cluster_gain = local_favored_cluster_gain;
-          favored_cluster = local_favored_cluster;
+        if (store_favored_cluster && local_state.favored_cluster_gain > favored_cluster_gain) {
+          favored_cluster_gain = local_state.favored_cluster_gain;
+          favored_cluster = local_state.favored_cluster;
         }
       }
+
+      _local_cluster_selection_states.clear();
     }
 
     // if we couldn't join any cluster, we store the favored cluster
@@ -652,6 +636,57 @@ protected:
       map.clear();
     }
     return std::make_pair(state.best_cluster, actual_gain);
+  }
+
+  template <typename RatingMap>
+  ClusterID select_best_cluster(
+      const bool store_favored_cluster,
+      ClusterSelectionState &state,
+      RatingMap &map,
+      std::vector<ClusterID> &tie_breaking_clusters
+  ) {
+    ClusterID favored_cluster = state.initial_cluster;
+
+    const EdgeWeight gain_delta = (Config::kUseActualGain) ? map[state.initial_cluster] : 0;
+    for (const auto [cluster, rating] : map.entries()) {
+      state.current_cluster = cluster;
+      state.current_gain = rating - gain_delta;
+      state.current_cluster_weight = derived_cluster_weight(cluster);
+
+      if (state.current_gain > state.best_gain) {
+        if (store_favored_cluster) {
+          favored_cluster = state.current_cluster;
+        }
+
+        if (derived_accept_cluster1(state)) {
+          tie_breaking_clusters.clear();
+          tie_breaking_clusters.push_back(state.current_cluster);
+
+          state.best_cluster = state.current_cluster;
+          state.best_cluster_weight = state.current_cluster_weight;
+          state.best_gain = state.current_gain;
+        }
+      } else if (state.current_gain == state.best_gain) {
+        if (derived_accept_cluster2(state)) {
+          tie_breaking_clusters.clear();
+          tie_breaking_clusters.push_back(state.current_cluster);
+
+          state.best_cluster = state.current_cluster;
+          state.best_cluster_weight = state.current_cluster_weight;
+        } else if (derived_accept_cluster3(state)) {
+          tie_breaking_clusters.push_back(state.current_cluster);
+        }
+      }
+    }
+
+    if (tie_breaking_clusters.size() > 1) {
+      const ClusterID index = state.local_rand.random_index(0, tie_breaking_clusters.size());
+      const ClusterID best_cluster = tie_breaking_clusters[index];
+      state.best_cluster = best_cluster;
+    }
+
+    tie_breaking_clusters.clear();
+    return favored_cluster;
   }
 
   /*!
@@ -1079,6 +1114,18 @@ private: // CRTP calls
     return static_cast<Derived *>(this)->accept_cluster(state);
   }
 
+  [[nodiscard]] bool derived_accept_cluster1(const ClusterSelectionState &state) {
+    return static_cast<Derived *>(this)->accept_cluster1(state);
+  }
+
+  [[nodiscard]] bool derived_accept_cluster2(const ClusterSelectionState &state) {
+    return static_cast<Derived *>(this)->accept_cluster2(state);
+  }
+
+  [[nodiscard]] bool derived_accept_cluster3(const ClusterSelectionState &state) {
+    return static_cast<Derived *>(this)->accept_cluster3(state);
+  }
+
   void derived_reset_node_state(const NodeID u) {
     static_cast<Derived *>(this)->reset_node_state(u);
   }
@@ -1168,6 +1215,12 @@ protected: // Members
 
   //! Thread-local map to compute gain values.
   tbb::enumerable_thread_specific<RatingMap> _rating_map_ets;
+
+  //! Vector of local cluster selection states where each entry is owned by a parallel task.
+  std::vector<LocalClusterSelectionState> _local_cluster_selection_states;
+
+  //! Thread-local vector to hold clusters considered for uniform tie-breaking.
+  tbb::enumerable_thread_specific<std::vector<ClusterID>> _tie_breaking_clusters_ets;
 
   //! Flags nodes with at least one node in its neighborhood that changed
   //! clusters during the last iteration. Nodes without this flag set must not
@@ -1624,6 +1677,7 @@ private:
       auto &local_num_moved_nodes = _num_moved_nodes_ets.local();
       auto &local_rand = Random::instance();
       auto &local_rating_map = _rating_map_ets.local();
+      auto &local_tie_breaking_clusters = _tie_breaking_clusters_ets.local();
       NodeID num_removed_clusters = 0;
 
       const auto chunk_id = next_chunk.fetch_add(1, std::memory_order_relaxed);
@@ -1663,7 +1717,8 @@ private:
               continue;
             }
 
-            const auto [moved_node, emptied_cluster] = handle_node(u, local_rand, local_rating_map);
+            const auto [moved_node, emptied_cluster] =
+                handle_node(u, local_rand, local_rating_map, local_tie_breaking_clusters);
             if (moved_node) {
               ++local_num_moved_nodes;
 
@@ -1697,9 +1752,11 @@ private:
 
     auto &num_moved_nodes = _num_moved_nodes_ets.local();
     auto &rand = Random::instance();
+    auto &local_tie_breaking_clusters = _tie_breaking_clusters_ets.local();
     for (const NodeID u : _second_phase_nodes) {
-      const auto [moved_node, emptied_cluster] =
-          Base::template handle_node<false>(u, rand, _concurrent_rating_map);
+      const auto [moved_node, emptied_cluster] = Base::template handle_node<false>(
+          u, rand, _concurrent_rating_map, local_tie_breaking_clusters
+      );
 
       if (moved_node) {
         ++num_moved_nodes;
@@ -1734,6 +1791,7 @@ protected:
   using Base::_second_phase_aggregation_strategy;
   using Base::_second_phase_nodes;
   using Base::_second_phase_selection_strategy;
+  using Base::_tie_breaking_clusters_ets;
   using Base::_use_two_phases;
 
   Permutations &_random_permutations;
