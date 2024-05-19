@@ -1,11 +1,13 @@
 /*******************************************************************************
+ * Fixed-size array backed by its own memory or a provided memory region.
+ *
  * @file:   static_array.h
  * @author: Daniel Seemaier
  * @date:   21.09.2021
- * @brief:  Combination of owning static array and a span.
  ******************************************************************************/
 #pragma once
 
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <iterator>
@@ -15,27 +17,43 @@
 #include <tbb/parallel_for.h>
 
 #include "kaminpar-common/assert.h"
+#include "kaminpar-common/constexpr_utils.h"
 #include "kaminpar-common/heap_profiler.h"
 #include "kaminpar-common/parallel/tbb_malloc.h"
 
+// Threshold for using transparent huge pages for large memory allocations (unit: number of
+// elements, *not* number of bytes -- @todo change this?)
+#define KAMINPAR_THP_THRESHOLD 1024 * 1024 * 64
+
 namespace kaminpar {
 namespace static_array {
+//! Tag for allocating memory, but not touching it. Without this tag, memory is initialized to the
+//! default value for the given type.
 constexpr struct noinit_t {
 } noinit;
+
+//! Tag for small memory allocations that should never be backed by transparent huge pages.
+constexpr struct small_t {
+} small;
+
+//! Tag for initializing memory sequentially. Without this tag, memory will be initialized by a
+//! parallel loop. Has no effect in the presence of the noinit tag.
+constexpr struct seq_t {
+} seq;
 } // namespace static_array
 
 template <typename T> class StaticArray {
 public:
-  class StaticArrayIterator {
+  template <bool is_const> class StaticArrayIterator {
   public:
-    using iterator_category = std::random_access_iterator_tag;
+    using iterator_category = std::contiguous_iterator_tag;
     using value_type = T;
-    using reference = T &;
-    using pointer = T *;
+    using reference = std::conditional_t<is_const, const T &, T &>;
+    using pointer = std::conditional_t<is_const, const T *, T *>;
     using difference_type = std::ptrdiff_t;
 
     StaticArrayIterator() : _ptr(nullptr) {}
-    StaticArrayIterator(T *ptr) : _ptr(ptr) {}
+    StaticArrayIterator(pointer ptr) : _ptr(ptr) {}
 
     StaticArrayIterator(const StaticArrayIterator &other) = default;
     StaticArrayIterator &operator=(const StaticArrayIterator &other) = default;
@@ -46,6 +64,10 @@ public:
 
     pointer operator->() const {
       return _ptr;
+    }
+
+    reference operator[](const difference_type &n) const {
+      return _ptr[n];
     }
 
     StaticArrayIterator &operator++() {
@@ -64,60 +86,57 @@ public:
       return {_ptr--};
     }
 
-    StaticArrayIterator operator+(const difference_type &n) const {
-      return StaticArrayIterator{_ptr + n};
-    }
-
     StaticArrayIterator &operator+=(const difference_type &n) {
       return _ptr += n, *this;
-    }
-
-    StaticArrayIterator operator-(const difference_type &n) const {
-      return StaticArrayIterator{_ptr - n};
     }
 
     StaticArrayIterator &operator-=(const difference_type &n) {
       return _ptr -= n, *this;
     }
 
-    reference operator[](const difference_type &n) const {
-      return *_ptr[n];
+    friend bool operator==(const StaticArrayIterator &lhs, const StaticArrayIterator &rhs) {
+      return lhs._ptr == rhs._ptr;
     }
 
-    bool operator==(const StaticArrayIterator &other) const {
-      return _ptr == other._ptr;
+    friend bool operator!=(const StaticArrayIterator &lhs, const StaticArrayIterator &rhs) {
+      return lhs._ptr != rhs._ptr;
     }
 
-    bool operator!=(const StaticArrayIterator &other) const {
-      return _ptr != other._ptr;
+    friend bool operator>(const StaticArrayIterator &lhs, const StaticArrayIterator &rhs) {
+      return lhs._ptr > rhs._ptr;
     }
 
-    bool operator>(const StaticArrayIterator &other) const {
-      return _ptr > other._ptr;
+    friend bool operator<(const StaticArrayIterator &lhs, const StaticArrayIterator &rhs) {
+      return lhs._ptr < rhs._ptr;
     }
 
-    bool operator<(const StaticArrayIterator &other) const {
-      return _ptr < other._ptr;
+    friend bool operator<=(const StaticArrayIterator &lhs, const StaticArrayIterator &rhs) {
+      return lhs._ptr <= rhs._ptr;
     }
 
-    bool operator<=(const StaticArrayIterator &other) const {
-      return _ptr <= other._ptr;
+    friend bool operator>=(const StaticArrayIterator &lhs, const StaticArrayIterator &rhs) {
+      return lhs._ptr >= rhs._ptr;
     }
 
-    bool operator>=(const StaticArrayIterator &other) const {
-      return _ptr >= other._ptr;
+    friend difference_type
+    operator-(const StaticArrayIterator &lhs, const StaticArrayIterator &rhs) {
+      return lhs._ptr - rhs._ptr;
     }
 
-    difference_type operator+(const StaticArrayIterator &other) {
-      return _ptr + other._ptr;
+    friend StaticArrayIterator operator+(const StaticArrayIterator &it, const difference_type n) {
+      return {it._ptr + n};
     }
 
-    difference_type operator-(const StaticArrayIterator &other) {
-      return _ptr - other._ptr;
+    friend StaticArrayIterator operator-(const StaticArrayIterator &it, const difference_type n) {
+      return {it._ptr - n};
+    }
+
+    friend StaticArrayIterator operator+(const difference_type n, const StaticArrayIterator &it) {
+      return {it._ptr + n};
     }
 
   private:
-    T *_ptr;
+    pointer _ptr;
   };
 
 public:
@@ -125,37 +144,29 @@ public:
   using size_type = std::size_t;
   using reference = T &;
   using const_reference = const T &;
-  using iterator = StaticArrayIterator;
-  using const_iterator = const StaticArrayIterator;
-
-  StaticArray(T *storage, const std::size_t size) : _size(size), _data(storage) {
-    RECORD_DATA_STRUCT(size * sizeof(T), _struct);
-  }
-
-  StaticArray(heap_profiler::unique_ptr<T> storage, const std::size_t size)
-      : _overcommited_data(std::move(storage)),
-        _data(_overcommited_data.get()),
-        _size(size) {
-    RECORD_DATA_STRUCT(size * sizeof(T), _struct);
-  }
-
-  StaticArray(const std::size_t start, const std::size_t size, StaticArray &data)
-      : StaticArray(size, data._data + start) {
-    KASSERT(start + size <= data.size());
-  }
+  using iterator = StaticArrayIterator<false>;
+  using const_iterator = StaticArrayIterator<true>;
 
   StaticArray(const std::size_t size, value_type *data) : _size(size), _data(data) {
     RECORD_DATA_STRUCT(size * sizeof(T), _struct);
   }
 
-  StaticArray(const std::size_t size, const value_type init_value = value_type()) {
-    RECORD_DATA_STRUCT(0, _struct);
-    resize(size, init_value);
+  StaticArray(const std::size_t size, heap_profiler::unique_ptr<T> storage)
+      : _size(size),
+        _overcommited_data(std::move(storage)),
+        _data(_overcommited_data.get()) {
+    RECORD_DATA_STRUCT(size * sizeof(T), _struct);
   }
 
-  StaticArray(const std::size_t size, static_array::noinit_t) {
+  template <typename... Tags>
+  StaticArray(const std::size_t size, const value_type init_value, Tags... tags) {
     RECORD_DATA_STRUCT(0, _struct);
-    resize(size, static_array::noinit);
+    resize(size, init_value, std::forward<Tags>(tags)...);
+  }
+
+  template <typename... Tags> StaticArray(const std::size_t size, Tags... tags) {
+    RECORD_DATA_STRUCT(0, _struct);
+    resize(size, value_type(), std::forward<Tags>(tags)...);
   }
 
   template <typename Iterator>
@@ -204,26 +215,22 @@ public:
   }
 
   reference back() {
-    KASSERT(_data);
-    KASSERT(_size > 0u);
+    KASSERT(_data && _size > 0u);
     return _data[_size - 1];
   }
 
   const_reference back() const {
-    KASSERT(_data);
-    KASSERT(_size > 0u);
+    KASSERT(_data && _size > 0u);
     return _data[_size - 1];
   }
 
   reference front() {
-    KASSERT(_data);
-    KASSERT(_size > 0u);
+    KASSERT(_data && _size > 0u);
     return _data[0];
   }
 
   const_reference front() const {
-    KASSERT(_data);
-    KASSERT(_size > 0u);
+    KASSERT(_data && _size > 0u);
     return _data[0];
   }
 
@@ -246,24 +253,27 @@ public:
     return iterator(_data);
   }
 
-  const_iterator cbegin() const {
+  const_iterator begin() const {
     KASSERT(_data);
     return const_iterator(_data);
   }
 
+  const_iterator cbegin() const {
+    return begin();
+  }
+
   iterator end() {
-    return iterator{_data + _size};
+    KASSERT(_data);
+    return iterator(_data + _size);
+  }
+
+  const_iterator end() const {
+    KASSERT(_data);
+    return const_iterator(_data + _size);
   }
 
   const_iterator cend() const {
-    return const_iterator{_data + _size};
-  }
-
-  const_iterator begin() const {
-    return cbegin();
-  }
-  iterator end() const {
-    return cend();
+    return end();
   }
 
   void restrict(const std::size_t new_size) {
@@ -271,6 +281,7 @@ public:
         new_size <= _size,
         "restricted size " << new_size << " must be smaller than the unrestricted size " << _size
     );
+
     _unrestricted_size = _size;
     _size = new_size;
   }
@@ -286,30 +297,41 @@ public:
   [[nodiscard]] bool empty() const {
     return _size == 0;
   }
+
   [[nodiscard]] size_type size() const {
     return _size;
   }
 
-  void resize(const std::size_t size, static_array::noinit_t) {
-    KASSERT(_data == _owned_data.get(), "cannot resize span", assert::always);
-    allocate_data(size);
+  template <typename... Tags> void resize(const std::size_t size, Tags &&...tags) {
+    resize(size, value_type(), std::forward<Tags>(tags)...);
   }
 
-  void resize(
-      const size_type size,
-      const value_type init_value = value_type(),
-      const bool assign_parallel = true
-  ) {
-    resize(size, static_array::noinit);
-    assign(size, init_value, assign_parallel);
+  template <typename... Tags>
+  void resize(const std::size_t size, const value_type init_value, Tags &&...tags) {
+    KASSERT(_data == _owned_data.get(), "cannot resize span", assert::always);
+    const bool use_thp =
+        (size >= KAMINPAR_THP_THRESHOLD && !contains_tag_v<static_array::small_t, Tags...>);
+
+    // Before allocating the new memory, free the old memory to prevent both from being held in
+    // memory at the same time
+    _owned_data.reset();
+    allocate_data(size, use_thp);
+
+    if constexpr (!contains_tag_v<static_array::noinit_t, Tags...>) {
+      if constexpr (contains_tag_v<static_array::seq_t, Tags...>) {
+        assign(size, init_value, false);
+      } else {
+        assign(size, init_value, true);
+      }
+    }
   }
 
   void assign(const size_type count, const value_type value, const bool assign_parallel = true) {
     KASSERT(_data);
 
     if (assign_parallel) {
-      const std::size_t step{std::max(count / std::thread::hardware_concurrency(), 1UL)};
-      tbb::parallel_for(0UL, count, step, [&](const size_type i) {
+      const std::size_t step = std::max(count / std::thread::hardware_concurrency(), 1UL);
+      tbb::parallel_for<std::size_t>(0, count, step, [&](const size_type i) {
         for (size_type j = i; j < std::min(i + step, count); ++j) {
           _data[j] = value;
         }
@@ -329,8 +351,8 @@ public:
   }
 
 private:
-  void allocate_data(const std::size_t size) {
-    _owned_data = parallel::make_unique<value_type>(size);
+  void allocate_data(const std::size_t size, const bool thp) {
+    _owned_data = parallel::make_unique<value_type>(size, thp);
     _data = _owned_data.get();
     _size = size;
     _unrestricted_size = _size;

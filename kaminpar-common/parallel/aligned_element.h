@@ -6,7 +6,9 @@
  ******************************************************************************/
 #pragma once
 
-#include <type_traits>
+#include <cstdlib>
+
+#include "kaminpar-common/ranges.h"
 
 #include "kaminpar-common/ranges.h"
 

@@ -22,19 +22,17 @@
 #include "kaminpar-common/logger.h"
 #include "kaminpar-common/parallel/atomic.h"
 #include "kaminpar-common/random.h"
-#include "kaminpar-common/tags.h"
 
 namespace kaminpar {
 struct LegacyLabelPropagationConfig {
   using CSRGraph = ::kaminpar::shm::CSRGraph;
 
   // Data structure used to accumulate edge weights for gain value calculation
-  using RatingMap =
-      ::kaminpar::RatingMap<shm::EdgeWeight, shm::NodeID, FastResetArray<shm::EdgeWeight>>;
+  using RatingMap = ::kaminpar::RatingMap<shm::EdgeWeight, shm::NodeID>;
 
   // Data type for cluster IDs and weights
-  using ClusterID = tag::Mandatory;
-  using ClusterWeight = tag::Mandatory;
+  using ClusterID = void;
+  using ClusterWeight = void;
 
   // Approx. number of edges per work unit
   static constexpr shm::NodeID kMinChunkSize = 1024;

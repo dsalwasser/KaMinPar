@@ -23,10 +23,14 @@ Context create_context_by_preset_name(const std::string &name) {
     return create_fast_context();
   } else if (name == "largek") {
     return create_largek_context();
+  } else if (name == "largek-fm") {
+    return create_largek_fm_context();
   } else if (name == "strong" || name == "fm") {
     return create_strong_context();
   } else if (name == "jet") {
-    return create_jet_context();
+    return create_jet_context(1);
+  } else if (name == "4xjet") {
+    return create_jet_context(4);
   } else if (name == "noref") {
     return create_noref_context();
   }
@@ -43,6 +47,7 @@ std::unordered_set<std::string> get_preset_names() {
       "strong",
       "fm",
       "jet",
+      "4xjet",
       "noref",
   };
 }
@@ -80,7 +85,7 @@ Context create_default_context() {
                               .large_degree_threshold = 1000000,
                               .max_num_neighbors = 200000,
                               .cluster_weights_structure = ClusterWeightsStructure::VEC,
-                              .use_two_phases = false,
+                              .impl = LabelPropagationImplementation::SINGLE_PHASE,
                               .second_phase_selection_strategy =
                                   SecondPhaseSelectionStrategy::FULL_RATING_MAP,
                               .second_phase_aggregation_strategy =
@@ -144,7 +149,7 @@ Context create_default_context() {
                       .num_iterations = 5,
                       .large_degree_threshold = 1000000,
                       .max_num_neighbors = std::numeric_limits<NodeID>::max(),
-                      .use_two_phases = false,
+                      .impl = LabelPropagationImplementation::SINGLE_PHASE,
                       .second_phase_selection_strategy =
                           SecondPhaseSelectionStrategy::FULL_RATING_MAP,
                       .second_phase_aggregation_strategy = SecondPhaseAggregationStrategy::BUFFERED,
@@ -170,8 +175,12 @@ Context create_default_context() {
                       .num_iterations = 0,
                       .num_fruitless_iterations = 12,
                       .fruitless_threshold = 0.999,
-                      .fine_negative_gain_factor = 0.25,
-                      .coarse_negative_gain_factor = 0.75,
+                      .num_rounds_on_fine_level = 1,
+                      .num_rounds_on_coarse_level = 1,
+                      .initial_gain_temp_on_fine_level = 0.25,
+                      .final_gain_temp_on_fine_level = 0.25,
+                      .initial_gain_temp_on_coarse_level = 0.75,
+                      .final_gain_temp_on_coarse_level = 0.75,
                       .balancing_algorithm = RefinementAlgorithm::GREEDY_BALANCER,
                   },
               .mtkahypar =
@@ -207,7 +216,7 @@ Context create_memory_context() {
   ctx.compression.enabled = true;
   ctx.compression.may_dismiss = true;
   ctx.coarsening.clustering.algorithm = ClusteringAlgorithm::LABEL_PROPAGATION;
-  ctx.coarsening.clustering.lp.use_two_phases = true;
+  ctx.coarsening.clustering.lp.impl = LabelPropagationImplementation::TWO_PHASE;
   ctx.coarsening.clustering.max_mem_free_coarsening_level = 1;
   ctx.coarsening.contraction.mode = ContractionMode::UNBUFFERED;
   return ctx;
@@ -233,6 +242,21 @@ Context create_largek_context() {
   return ctx;
 }
 
+Context create_largek_fm_context() {
+  Context ctx = create_largek_context();
+
+  ctx.refinement.algorithms = {
+      RefinementAlgorithm::GREEDY_BALANCER,
+      RefinementAlgorithm::LEGACY_LABEL_PROPAGATION,
+      RefinementAlgorithm::KWAY_FM,
+      RefinementAlgorithm::GREEDY_BALANCER,
+  };
+
+  ctx.refinement.kway_fm.gain_cache_strategy = GainCacheStrategy::LARGE_K;
+
+  return ctx;
+}
+
 Context create_strong_context() {
   Context ctx = create_default_context();
 
@@ -246,12 +270,22 @@ Context create_strong_context() {
   return ctx;
 }
 
-Context create_jet_context() {
+Context create_jet_context(const int rounds) {
   Context ctx = create_default_context();
   ctx.refinement.algorithms = {
       RefinementAlgorithm::GREEDY_BALANCER,
       RefinementAlgorithm::JET,
   };
+
+  if (rounds > 1) {
+    ctx.refinement.jet.num_rounds_on_coarse_level = rounds;
+    ctx.refinement.jet.num_rounds_on_fine_level = rounds;
+    ctx.refinement.jet.initial_gain_temp_on_coarse_level = 0.75;
+    ctx.refinement.jet.initial_gain_temp_on_fine_level = 0.75;
+    ctx.refinement.jet.final_gain_temp_on_coarse_level = 0.25;
+    ctx.refinement.jet.final_gain_temp_on_fine_level = 0.25;
+  }
+
   return ctx;
 }
 

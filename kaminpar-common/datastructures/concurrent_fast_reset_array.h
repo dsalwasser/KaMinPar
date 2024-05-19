@@ -13,6 +13,7 @@
 
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
+#include <tbb/task_arena.h>
 
 #include "kaminpar-common/heap_profiler.h"
 #include "kaminpar-common/parallel/aligned_element.h"

@@ -24,18 +24,17 @@
 #include "kaminpar-common/logger.h"
 #include "kaminpar-common/parallel/atomic.h"
 #include "kaminpar-common/random.h"
-#include "kaminpar-common/tags.h"
 
 namespace kaminpar::dist {
 struct LabelPropagationConfig {
   using Graph = DistributedGraph;
 
   // Data structure used to accumulate edge weights for gain value calculation
-  using RatingMap = ::kaminpar::RatingMap<EdgeWeight, NodeID, FastResetArray<EdgeWeight>>;
+  using RatingMap = ::kaminpar::RatingMap<EdgeWeight, NodeID>;
 
   // Data type for cluster IDs and weights
-  using ClusterID = tag::Mandatory;
-  using ClusterWeight = tag::Mandatory;
+  using ClusterID = void;
+  using ClusterWeight = void;
 
   // Approx. number of edges per work unit
   static constexpr shm::NodeID kMinChunkSize = 1024;
@@ -831,12 +830,12 @@ protected: // Members
   //! Flags nodes with at least one node in its neighborhood that changed
   //! clusters during the last iteration. Nodes without this flag set must not
   //! be considered in the next iteration.
-  scalable_vector<parallel::Atomic<uint8_t>> _active;
+  ScalableVector<parallel::Atomic<uint8_t>> _active;
 
   //! If a node cannot join any cluster during an iteration, this vector stores
   //! the node's highest rated cluster independent of the maximum cluster
   //! weight. This information is used during 2-hop clustering.
-  scalable_vector<parallel::Atomic<ClusterID>> _favored_clusters;
+  ScalableVector<parallel::Atomic<ClusterID>> _favored_clusters;
 
   //! If statistics are enabled, this is the sum of the gain of all moves that
   //! were performed. If executed single-thread, this should be equal to the
@@ -1199,84 +1198,13 @@ protected:
   std::vector<Bucket> _buckets;
 };
 
-template <typename NodeID, typename ClusterID> class NonatomicOwnedClusterVector {
-public:
-  explicit NonatomicOwnedClusterVector(const NodeID max_num_nodes) : _clusters(max_num_nodes) {
-    tbb::parallel_for<NodeID>(0, max_num_nodes, [&](const NodeID u) { _clusters[u] = 0; });
-  }
-
-  [[nodiscard]] auto &&take_clusters() {
-    return std::move(_clusters);
-  }
-
-  [[nodiscard]] auto &clusters() {
-    return _clusters;
-  }
-
-  void init_cluster(const NodeID node, const ClusterID cluster) {
-    move_node(node, cluster);
-  }
-
-  [[nodiscard]] ClusterID cluster(const NodeID node) {
-    KASSERT(node < _clusters.size());
-    return __atomic_load_n(&_clusters[node], __ATOMIC_RELAXED);
-  }
-
-  void move_node(const NodeID node, const ClusterID cluster) {
-    KASSERT(node < _clusters.size());
-    __atomic_store_n(&_clusters[node], cluster, __ATOMIC_RELAXED);
-  }
-
-  void ensure_cluster_size(const NodeID max_num_nodes) {
-    if (_clusters.size() < max_num_nodes) {
-      _clusters.resize(max_num_nodes);
-    }
-  }
-
-private:
-  NoinitVector<ClusterID> _clusters;
-};
-
-template <typename NodeID, typename ClusterID> class OwnedClusterVector {
-public:
-  explicit OwnedClusterVector(const NodeID max_num_nodes) : _clusters(max_num_nodes) {}
-
-  [[nodiscard]] auto &&take_clusters() {
-    return std::move(_clusters);
-  }
-
-  [[nodiscard]] auto &clusters() {
-    return _clusters;
-  }
-
-  void init_cluster(const NodeID node, const ClusterID cluster) {
-    _clusters[node] = cluster;
-  }
-
-  [[nodiscard]] ClusterID cluster(const NodeID node) {
-    KASSERT(node < _clusters.size());
-    return _clusters[node];
-  }
-
-  void move_node(const NodeID node, const ClusterID cluster) {
-    KASSERT(node < _clusters.size());
-    _clusters[node] = cluster;
-  }
-
-  void ensure_cluster_size(const NodeID max_num_nodes) {
-    if (_clusters.size() < max_num_nodes) {
-      _clusters.resize(max_num_nodes);
-    }
-  }
-
-private:
-  scalable_vector<parallel::Atomic<ClusterID>> _clusters;
-};
-
 template <typename ClusterID, typename ClusterWeight> class OwnedRelaxedClusterWeightVector {
 public:
-  explicit OwnedRelaxedClusterWeightVector(const ClusterID max_num_clusters)
-      : _cluster_weights(max_num_clusters) {}
+  void allocate_cluster_weights(const ClusterID num_clusters) {
+    if (_cluster_weights.size() < num_clusters) {
+      _cluster_weights.resize(num_clusters);
+    }
+  }
 
   auto &&take_cluster_weights() {
     return std::move(_cluster_weights);
@@ -1287,7 +1215,7 @@ public:
   }
 
   ClusterWeight cluster_weight(const ClusterID cluster) {
-    return _cluster_weights[cluster];
+    return __atomic_load_n(&_cluster_weights[cluster], __ATOMIC_RELAXED);
   }
 
   bool move_cluster_weight(
@@ -1297,14 +1225,38 @@ public:
       const ClusterWeight max_weight
   ) {
     if (_cluster_weights[new_cluster] + delta <= max_weight) {
-      _cluster_weights[new_cluster].fetch_add(delta, std::memory_order_relaxed);
-      _cluster_weights[old_cluster].fetch_sub(delta, std::memory_order_relaxed);
+      __atomic_fetch_add(&_cluster_weights[new_cluster], delta, __ATOMIC_RELAXED);
+      __atomic_fetch_sub(&_cluster_weights[old_cluster], delta, __ATOMIC_RELAXED);
       return true;
     }
     return false;
   }
 
 private:
-  scalable_vector<parallel::Atomic<ClusterWeight>> _cluster_weights;
+  StaticArray<ClusterWeight> _cluster_weights;
+};
+
+template <typename NodeID, typename ClusterID> class NonatomicClusterVectorRef {
+public:
+  void init_clusters_ref(StaticArray<ClusterID> &clustering) {
+    _clusters = &clustering;
+  }
+
+  void init_cluster(const NodeID node, const ClusterID cluster) {
+    move_node(node, cluster);
+  }
+
+  [[nodiscard]] ClusterID cluster(const NodeID node) {
+    KASSERT(node < _clusters->size());
+    return __atomic_load_n(&_clusters->at(node), __ATOMIC_RELAXED);
+  }
+
+  void move_node(const NodeID node, const ClusterID cluster) {
+    KASSERT(node < _clusters->size());
+    __atomic_store_n(&_clusters->at(node), cluster, __ATOMIC_RELAXED);
+  }
+
+private:
+  StaticArray<ClusterID> *_clusters = nullptr;
 };
 } // namespace kaminpar::dist

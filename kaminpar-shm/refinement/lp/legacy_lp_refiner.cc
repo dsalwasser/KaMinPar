@@ -7,11 +7,11 @@
  ******************************************************************************/
 #include "kaminpar-shm/refinement/lp/legacy_lp_refiner.h"
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
 #include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/legacy_label_propagation.h"
 
 #include "kaminpar-common/assert.h"
+#include "kaminpar-common/datastructures/rating_map.h"
 #include "kaminpar-common/timer.h"
 
 namespace kaminpar::shm {
@@ -22,7 +22,7 @@ namespace kaminpar::shm {
 struct LegacyLabelPropagationRefinerConfig : public LegacyLabelPropagationConfig {
   using ClusterID = BlockID;
   using ClusterWeight = BlockWeight;
-  using RatingMap = ::kaminpar::RatingMap<EdgeWeight, NodeID, SparseMap<NodeID, EdgeWeight>>;
+  using RatingMap = ::kaminpar::RatingMap<EdgeWeight, NodeID, rm_backyard::SparseMap>;
   static constexpr bool kUseHardWeightConstraint = true;
   static constexpr bool kReportEmptyClusters = false;
 };

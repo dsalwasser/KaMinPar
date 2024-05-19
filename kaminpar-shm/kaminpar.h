@@ -101,6 +101,12 @@ enum class ClusterWeightsStructure {
   INITIALLY_SMALL_VEC
 };
 
+enum class LabelPropagationImplementation {
+  SINGLE_PHASE,
+  TWO_PHASE,
+  GROWING_HASH_TABLES
+};
+
 enum class SecondPhaseSelectionStrategy {
   HIGH_DEGREE,
   FULL_RATING_MAP
@@ -142,8 +148,8 @@ struct LabelPropagationCoarseningContext {
   NodeID max_num_neighbors;
 
   ClusterWeightsStructure cluster_weights_structure;
+  LabelPropagationImplementation impl;
 
-  bool use_two_phases;
   SecondPhaseSelectionStrategy second_phase_selection_strategy;
   SecondPhaseAggregationStrategy second_phase_aggregation_strategy;
   bool relabel_before_second_phase;
@@ -202,6 +208,7 @@ enum class FMStoppingRule {
 enum class GainCacheStrategy {
   SPARSE,
   DENSE,
+  LARGE_K,
   ON_THE_FLY,
   HYBRID,
   TRACING,
@@ -212,7 +219,8 @@ struct LabelPropagationRefinementContext {
   NodeID large_degree_threshold;
   NodeID max_num_neighbors;
 
-  bool use_two_phases;
+  LabelPropagationImplementation impl;
+
   SecondPhaseSelectionStrategy second_phase_selection_strategy;
   SecondPhaseAggregationStrategy second_phase_aggregation_strategy;
 };
@@ -237,8 +245,12 @@ struct JetRefinementContext {
   int num_iterations;
   int num_fruitless_iterations;
   double fruitless_threshold;
-  double fine_negative_gain_factor;
-  double coarse_negative_gain_factor;
+  int num_rounds_on_fine_level;
+  int num_rounds_on_coarse_level;
+  double initial_gain_temp_on_fine_level;
+  double final_gain_temp_on_fine_level;
+  double initial_gain_temp_on_coarse_level;
+  double final_gain_temp_on_coarse_level;
   RefinementAlgorithm balancing_algorithm;
 };
 
@@ -434,8 +446,9 @@ Context create_default_context();
 Context create_memory_context();
 Context create_fast_context();
 Context create_largek_context();
+Context create_largek_fm_context();
 Context create_strong_context();
-Context create_jet_context();
+Context create_jet_context(int rounds = 1);
 Context create_noref_context();
 } // namespace kaminpar::shm
 
@@ -501,15 +514,6 @@ public:
       shm::EdgeWeight *adjwgt
   );
 
-  /*! @deprecated in favor of borrow_and_mutate_graph() */
-  void take_graph(
-      shm::NodeID n,
-      shm::EdgeID *xadj,
-      shm::NodeID *adjncy,
-      shm::NodeWeight *vwgt,
-      shm::EdgeWeight *adjwgt
-  );
-
   /*!
    * Sets the graph to be partitioned by copying the data pointed to by the given pointers.
    *
@@ -524,10 +528,10 @@ public:
    */
   void copy_graph(
       shm::NodeID n,
-      shm::EdgeID *const xadj,
-      shm::NodeID *const adjncy,
-      shm::NodeWeight *const vwgt,
-      shm::EdgeWeight *const adjwgt
+      const shm::EdgeID *const xadj,
+      const shm::NodeID *const adjncy,
+      const shm::NodeWeight *const vwgt,
+      const shm::EdgeWeight *const adjwgt
   );
 
   /*!
@@ -538,7 +542,7 @@ public:
   void set_graph(shm::Graph graph);
 
   /*!
-   * Partitions the graph set by `take_graph()` or `copy_graph()` into `k` blocks.
+   * Partitions the graph set by `borrow_and_mutate_graph()` or `copy_graph()` into `k` blocks.
    *
    * @param k The number of blocks to partition the graph into.
    * @param partition Array of length `n` for storing the partition. The caller is reponsible for
