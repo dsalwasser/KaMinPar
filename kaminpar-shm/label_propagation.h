@@ -35,7 +35,7 @@ struct LabelPropagationConfig {
   // Data structures used to accumulate edge weights for gain value calculation
   using RatingMap = ::kaminpar::RatingMap<shm::EdgeWeight, shm::NodeID>;
   using ConcurrentRatingMap = ConcurrentFastResetArray<shm::EdgeWeight, shm::NodeID>;
-  using GrowingRatingMap = DynamicRememberingFlatMap<shm::NodeID, shm::EdgeWeight>;
+  using GrowingRatingMap = rm_backyard::TLXBTree<shm::NodeID, shm::EdgeWeight>;
 
   // Data type for cluster IDs and weights
   using ClusterID = void;

@@ -346,6 +346,9 @@ endif ()
 # Add KAssert
 add_subdirectory(external/kassert EXCLUDE_FROM_ALL)
 
+# Add tlx
+add_subdirectory(external/tlx EXCLUDE_FROM_ALL)
+
 # If we can find Mt-KaHyPar, make it available for initial partitioning and refinement
 if (KAMINPAR_BUILD_WITH_MTKAHYPAR)
     find_library(LIB_MTKAHYPAR_GRAPH mtkahypar)

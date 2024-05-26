@@ -13,6 +13,8 @@
 #include <google/dense_hash_map>
 #include <unordered_map>
 
+#include <tlx/container/btree_map.hpp>
+
 #include "kaminpar-common/datastructures/fast_reset_array.h"
 #include "kaminpar-common/datastructures/fixed_size_sparse_map.h"
 #include "kaminpar-common/datastructures/sparse_map.h"
@@ -50,6 +52,30 @@ public:
 
 private:
   google::dense_hash_map<Key, Value> map;
+};
+
+template <typename Key, typename Value> class TLXBTree {
+public:
+  Value &operator[](const Key key) {
+    return map[key];
+  }
+
+  [[nodiscard]] auto &entries() {
+    return map;
+  }
+
+  void clear() {
+    map.clear();
+  }
+
+  [[nodiscard]] std::size_t capacity() const {
+    return std::numeric_limits<std::size_t>::max();
+  }
+
+  void resize(std::size_t) {}
+
+private:
+  tlx::btree_map<Key, Value> map;
 };
 
 template <typename Key, typename Value> class UnorderedMap {
