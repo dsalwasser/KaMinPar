@@ -25,13 +25,18 @@ namespace kaminpar::shm {
 
 namespace {
 
+template <bool kActualNumEdges = true>
 [[nodiscard]] std::size_t
 compressed_edge_array_max_size(const NodeID num_nodes, const EdgeID num_edges) {
   std::size_t edge_id_width;
-  if constexpr (CompressedGraph::kIntervalEncoding) {
-    edge_id_width = marked_varint_length(num_edges);
+  if constexpr (kActualNumEdges) {
+    if constexpr (CompressedGraph::kIntervalEncoding) {
+      edge_id_width = marked_varint_length(num_edges);
+    } else {
+      edge_id_width = varint_length(num_edges);
+    }
   } else {
-    edge_id_width = varint_length(num_edges);
+    edge_id_width = varint_max_length<EdgeID>();
   }
 
   std::size_t max_size = num_nodes * edge_id_width + num_edges * varint_length(num_nodes);
@@ -60,6 +65,19 @@ CompressedEdgesBuilder::CompressedEdgesBuilder(
     : _has_edge_weights(has_edge_weights),
       _edge_weights(edge_weights) {
   const std::size_t max_size = compressed_edge_array_max_size(num_nodes, num_edges);
+  _compressed_data_start = heap_profiler::overcommit_memory<std::uint8_t>(max_size);
+}
+
+CompressedEdgesBuilder::CompressedEdgesBuilder(
+    const NodeID num_nodes,
+    const EdgeID num_edges,
+    const NodeID max_degree,
+    bool has_edge_weights,
+    StaticArray<EdgeWeight> &edge_weights
+)
+    : _has_edge_weights(has_edge_weights),
+      _edge_weights(edge_weights) {
+  const std::size_t max_size = compressed_edge_array_max_size<false>(num_nodes, max_degree);
   _compressed_data_start = heap_profiler::overcommit_memory<std::uint8_t>(max_size);
 }
 
@@ -502,88 +520,19 @@ std::int64_t CompressedGraphBuilder::total_edge_weight() const {
 }
 
 CompressedGraph ParallelCompressedGraphBuilder::compress(const CSRGraph &graph) {
-  const bool has_node_weights = graph.is_node_weighted();
-  const bool has_edge_weights = graph.is_edge_weighted();
-
-  ParallelCompressedGraphBuilder builder(
-      graph.n(), graph.m(), has_node_weights, has_edge_weights, graph.sorted()
+  return ParallelCompressedGraphBuilder::compress(
+      graph.n(),
+      graph.m(),
+      graph.is_node_weighted(),
+      graph.is_edge_weighted(),
+      graph.sorted(),
+      [](const NodeID u) { return u; },
+      [&](const NodeID u) { return graph.degree(u); },
+      [&](const NodeID u) { return graph.first_edge(u); },
+      [&](const EdgeID e) { return graph.edge_target(e); },
+      [&](const NodeID u) { return graph.node_weight(u); },
+      [&](const EdgeID e) { return graph.edge_weight(e); }
   );
-
-  tbb::enumerable_thread_specific<std::vector<EdgeID>> offsets_ets;
-  tbb::enumerable_thread_specific<std::vector<std::pair<NodeID, EdgeWeight>>> neighbourhood_ets;
-  tbb::enumerable_thread_specific<CompressedEdgesBuilder> neighbourhood_builder_ets([&] {
-    return CompressedEdgesBuilder(graph.n(), graph.m(), has_edge_weights, builder.edge_weights());
-  });
-
-  ConcurrentCircularVector<NodeID, EdgeID> buffer(tbb::this_task_arena::max_concurrency());
-
-  constexpr NodeID chunk_size = 4096;
-  const NodeID num_chunks = math::div_ceil(graph.n(), chunk_size);
-  const NodeID last_chunk_size =
-      ((graph.n() % chunk_size) != 0) ? (graph.n() % chunk_size) : chunk_size;
-
-  tbb::parallel_for<NodeID>(0, num_chunks, [&](const auto) {
-    std::vector<EdgeID> &offsets = offsets_ets.local();
-    std::vector<std::pair<NodeID, EdgeWeight>> &neighbourhood = neighbourhood_ets.local();
-    CompressedEdgesBuilder &neighbourhood_builder = neighbourhood_builder_ets.local();
-
-    NodeWeight local_node_weight = 0;
-    EdgeWeight local_edge_weight = 0;
-
-    const NodeID chunk = buffer.next();
-    const NodeID start_node = chunk * chunk_size;
-
-    const NodeID chunk_length = (chunk + 1 == num_chunks) ? last_chunk_size : chunk_size;
-    const NodeID end_node = start_node + chunk_length;
-
-    const EdgeID first_edge = graph.first_edge(start_node);
-    neighbourhood_builder.init(first_edge);
-
-    for (NodeID node = start_node; node < end_node; ++node) {
-      for (const auto [incident_edge, adjacent_node] : graph.neighbors(node)) {
-        neighbourhood.emplace_back(adjacent_node, graph.edge_weight(incident_edge));
-      }
-
-      const EdgeID local_offset = neighbourhood_builder.add(node, neighbourhood);
-      offsets.push_back(local_offset);
-
-      neighbourhood.clear();
-    }
-
-    const EdgeID compressed_neighborhoods_size = neighbourhood_builder.size();
-    const EdgeID offset = buffer.fetch_and_update(chunk, compressed_neighborhoods_size);
-
-    NodeID node = start_node;
-    for (EdgeID local_offset : offsets) {
-      builder.add_node(node, offset + local_offset);
-
-      if (has_node_weights) {
-        const NodeWeight node_weight = graph.node_weight(node);
-        local_node_weight += node_weight;
-
-        builder.add_node_weight(node, node_weight);
-      }
-
-      node += 1;
-    }
-    offsets.clear();
-
-    builder.add_compressed_edges(
-        offset, compressed_neighborhoods_size, neighbourhood_builder.compressed_data()
-    );
-
-    builder.record_local_statistics(
-        neighbourhood_builder.max_degree(),
-        local_node_weight,
-        neighbourhood_builder.total_edge_weight(),
-        neighbourhood_builder.num_high_degree_nodes(),
-        neighbourhood_builder.num_high_degree_parts(),
-        neighbourhood_builder.num_interval_nodes(),
-        neighbourhood_builder.num_intervals()
-    );
-  });
-
-  return builder.build();
 }
 
 ParallelCompressedGraphBuilder::ParallelCompressedGraphBuilder(
