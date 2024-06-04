@@ -9,12 +9,13 @@ function(add_shm_benchmark target)
 endfunction()
 
 # Shared-memory benchmarks
-add_shm_benchmark(shm_compressed_graph_benchmark shm_compressed_graph_benchmark.cc)
+add_shm_benchmark(shm_input_benchmark shm_input_benchmark.cc)
 add_shm_benchmark(shm_label_propagation_benchmark shm_label_propagation_benchmark.cc)
 add_shm_benchmark(shm_refinement_benchmark shm_refinement_benchmark.cc)
+add_shm_benchmark(shm_gain_cache_benchmark shm_gain_cache_benchmark.cc)
+add_shm_benchmark(shm_compressed_graph_benchmark shm_compressed_graph_benchmark.cc)
 add_shm_benchmark(shm_variable_length_codec_benchmark shm_variable_length_codec_benchmark.cc)
 add_shm_benchmark(shm_tie_breaking_strategies_benchmark shm_tie_breaking_strategies_benchmark.cc)
-add_shm_benchmark(shm_gain_cache_benchmark shm_gain_cache_benchmark.cc)
 
 if (KAMINPAR_BUILD_DISTRIBUTED)
     function(add_dist_benchmark target)
