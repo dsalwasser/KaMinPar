@@ -175,7 +175,6 @@ public:
         const NodeID v_local = _global_to_local[v];
         return l(v_local, w);
       });
-
     } else {
       _graph->adjacent_nodes(u_global, [&](const NodeID v) {
         const BlockID v_block = _partition[v];

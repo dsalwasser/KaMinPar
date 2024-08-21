@@ -137,6 +137,7 @@ void extend_partition_recursive(
 
   for (const std::size_t i : {0, 1}) {
     if (ks[i] <= 1) {
+      partition_remapping[local_b + i] = 1;
       continue;
     }
 
@@ -287,11 +288,6 @@ void extend_partition(
   START_TIMER("Allocation");
   StaticArray<BlockID> partition = p_graph.take_raw_partition();
   StaticArray<BlockID> partition_remapping(local_block_indices.back());
-
-  ScalableVector<StaticArray<BlockID>> subgraph_partitions;
-  for (const auto &subgraph : subgraphs) {
-    subgraph_partitions.emplace_back(subgraph.n());
-  }
   STOP_TIMER();
   STOP_HEAP_PROFILER();
 
