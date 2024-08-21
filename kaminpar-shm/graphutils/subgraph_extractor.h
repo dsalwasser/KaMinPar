@@ -7,6 +7,7 @@
 #pragma once
 
 #include <array>
+#include <utility>
 #include <vector>
 
 #include "kaminpar-shm/datastructures/graph.h"
@@ -104,7 +105,7 @@ struct SubgraphMemory {
 
 struct SpanSubgraphExtractionResult {
   ScalableVector<Graph> subgraphs;
-  StaticArray<NodeID> node_mapping;
+  StaticArray<std::pair<NodeID, BlockID>> mapping;
 };
 
 struct SubgraphExtractionResult {

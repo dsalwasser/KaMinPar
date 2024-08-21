@@ -189,7 +189,8 @@ SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential_generic
 ) {
   KASSERT(p_graph.k() == 2u, "Only suitable for bipartitions!", assert::light);
 
-  StaticArray<NodeID> &global_to_local = graph.global_to_local();
+  using GlobalToLocalMapping = StaticArray<std::pair<NodeID, BlockID>>;
+  GlobalToLocalMapping &global_to_local = graph.global_to_local();
   StaticArray<NodeID> &local_to_global = graph.local_to_global();
 
   std::array<NodeID, 2> s_n{0, 0};
@@ -224,21 +225,20 @@ SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential_generic
     const BlockID b = p_graph.block(u);
     const NodeID u_local = s_i[b]++;
 
-    global_to_local[local_to_global[u]] = u_local;
+    global_to_local[local_to_global[u]].first = u_local;
     s_local_to_global[b][u_local] = local_to_global[u];
   }
 
   const auto create_graph = [&](const BlockID b) {
     return shm::Graph(std::make_unique<Graph>(
         graph.underlying_graph(),
-        graph.partition(),
         s_n[b],
         s_m[b],
         s_max_node_weight[b],
         s_total_node_weight[b],
         s_total_edge_weight[b],
         b_test + b,
-        StaticArray<BlockID>(global_to_local.size(), global_to_local.data()),
+        GlobalToLocalMapping(global_to_local.size(), global_to_local.data()),
         std::move(s_local_to_global[b])
     ));
   };
@@ -508,7 +508,8 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
     });
   };
 
-  StaticArray<NodeID> global_to_local(graph.n(), static_array::noinit);
+  using GlobalToLocalMapping = StaticArray<std::pair<NodeID, BlockID>>;
+  GlobalToLocalMapping global_to_local(graph.n(), static_array::noinit);
 
   std::vector<StaticArray<NodeID>> local_to_global_mappings;
   local_to_global_mappings.resize(num_blocks);
@@ -527,7 +528,7 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
         const NodeID u_local =
             __atomic_fetch_add(&local_to_global_size[u_block], 1, __ATOMIC_RELAXED);
 
-        global_to_local[u] = u_local;
+        global_to_local[u] = std::make_pair(u_local, u_block);
         local_to_global_mappings[u_block][u_local] = u;
       }
     });
@@ -538,14 +539,13 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
     tbb::parallel_for<BlockID>(0, num_blocks, [&](const BlockID b) {
       subgraphs[b] = shm::Graph(std::make_unique<BlockInducedSubgraph<Graph>>(
           &graph,
-          StaticArray<BlockID>(graph.n(), p_graph.raw_partition().data()),
           local_num_nodes[b],
           local_num_edges[b],
           local_max_node_weight[b],
           local_total_node_weight[b],
           local_total_edge_weight[b],
           b,
-          StaticArray<BlockID>(global_to_local.size(), global_to_local.data()),
+          GlobalToLocalMapping(global_to_local.size(), global_to_local.data()),
           std::move(local_to_global_mappings[b])
       ));
     });

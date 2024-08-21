@@ -92,8 +92,7 @@ PartitionedGraph bipartition(
 }
 
 void extend_partition_recursive(
-    const Graph &graph,
-    StaticArray<BlockID> &partition,
+    Graph &graph,
     StaticArray<BlockID> &partition_remapping,
     const BlockID b0,
     const BlockID local_b,
@@ -117,10 +116,12 @@ void extend_partition_recursive(
       << " + " << ks[1] << " blocks";
 
   const auto copy_partition = [&] {
-    graph.block_induced_reified([&](const auto &graph) {
+    graph.block_induced_reified([&](auto &graph) {
       const auto &local_to_global = graph.local_to_global();
+      auto &global_to_local = graph.global_to_local();
+
       for (const NodeID u : graph.nodes()) {
-        partition[local_to_global[u]] = local_b + p_graph.block(u);
+        global_to_local[local_to_global[u]].second = local_b + p_graph.block(u);
       }
     });
   };
@@ -143,7 +144,6 @@ void extend_partition_recursive(
 
     extend_partition_recursive(
         subgraphs[i],
-        partition,
         partition_remapping,
         b[i],
         local_b + (i == 0 ? 2 : 2 * ks[0]),
@@ -295,7 +295,7 @@ void extend_partition(
     SCOPED_HEAP_PROFILER("Bipartitioning");
 
     tbb::parallel_for<BlockID>(0, k, [&](const BlockID b) {
-      const auto &subgraph = subgraphs[b];
+      auto &subgraph = subgraphs[b];
       const BlockID final_kb = compute_final_k(b, k, input_ctx.partition.k);
       const BlockID subgraph_k = (k_prime == input_ctx.partition.k) ? final_kb : k_prime / k;
 
@@ -310,7 +310,6 @@ void extend_partition(
 
       extend_partition_recursive(
           subgraph,
-          partition,
           partition_remapping,
           0,
           local_block_indices[b],
@@ -330,7 +329,7 @@ void extend_partition(
     );
 
     p_graph.pfor_nodes([&](const NodeID u) {
-      const BlockID b = partition[u];
+      const BlockID b = mapping[u].second;
       partition[u] = partition_remapping[b < p_graph.k() ? local_block_indices[b] : b] - 1;
     });
     p_graph = PartitionedGraph(p_graph.graph(), k_prime, std::move(partition));
