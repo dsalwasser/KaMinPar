@@ -9,7 +9,7 @@
 
 #include <utility>
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
+#include "kaminpar-shm/datastructures/graph.h"
 #include "kaminpar-shm/kaminpar.h"
 
 #include "kaminpar-common/datastructures/marker.h"
@@ -30,7 +30,7 @@ namespace kaminpar::shm {
  *
  * @return Pair of hopefully far away nodes.
  */
-std::pair<NodeID, NodeID> find_far_away_nodes(const CSRGraph &graph, int num_iterations);
+std::pair<NodeID, NodeID> find_far_away_nodes(const Graph &graph, int num_iterations);
 
 /*!
  * Heuristic to find "far away" nodes for BFS initialization. Starts at a random seed
@@ -45,7 +45,6 @@ std::pair<NodeID, NodeID> find_far_away_nodes(const CSRGraph &graph, int num_ite
  *
  * @return Pair of hopefully far away nodes.
  */
-std::pair<NodeID, NodeID> find_far_away_nodes(
-    const CSRGraph &graph, int num_iterations, Queue<NodeID> &queue, Marker<> &marker
-);
+std::pair<NodeID, NodeID>
+find_far_away_nodes(const Graph &graph, int num_iterations, Queue<NodeID> &queue, Marker<> &marker);
 } // namespace kaminpar::shm

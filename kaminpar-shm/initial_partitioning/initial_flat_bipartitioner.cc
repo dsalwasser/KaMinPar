@@ -7,22 +7,15 @@
  ******************************************************************************/
 #include "kaminpar-shm/initial_partitioning/initial_flat_bipartitioner.h"
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
-#include "kaminpar-shm/datastructures/partitioned_graph.h"
-#include "kaminpar-shm/kaminpar.h"
-
-#include "kaminpar-common/assert.h"
-#include "kaminpar-common/datastructures/static_array.h"
-
 namespace kaminpar::shm {
-void InitialFlatBipartitioner::init(const CSRGraph &graph, const PartitionContext &p_ctx) {
+void InitialFlatBipartitioner::init(const Graph &graph, const PartitionContext &p_ctx) {
   KASSERT(p_ctx.k == 2u, "must be initialized with a 2-way partition context");
 
   _graph = &graph;
   _p_ctx = &p_ctx;
 }
 
-PartitionedCSRGraph InitialFlatBipartitioner::bipartition(
+PartitionedGraph InitialFlatBipartitioner::bipartition(
     StaticArray<BlockID> partition, StaticArray<BlockWeight> block_weights
 ) {
   if (_graph->n() == 0) {

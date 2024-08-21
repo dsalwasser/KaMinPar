@@ -193,6 +193,10 @@ public:
     return _partition;
   }
 
+  [[nodiscard]] inline StaticArray<BlockID> &raw_partition() {
+    return _partition;
+  }
+
   [[nodiscard]] inline StaticArray<BlockID> &&take_raw_partition() {
     return std::move(_partition);
   }

@@ -102,10 +102,19 @@ struct SubgraphMemory {
   IF_HEAP_PROFILING(heap_profiler::DataStructure *_struct);
 };
 
+struct SpanSubgraphExtractionResult {
+  ScalableVector<Graph> subgraphs;
+  StaticArray<NodeID> node_mapping;
+};
+
 struct SubgraphExtractionResult {
   ScalableVector<Graph> subgraphs;
   StaticArray<NodeID> node_mapping;
   StaticArray<SubgraphMemoryStartPosition> positions;
+};
+
+struct SequentialSpanSubgraphExtractionResult {
+  std::array<Graph, 2> subgraphs;
 };
 
 struct SequentialSubgraphExtractionResult {
@@ -156,6 +165,12 @@ struct TemporarySubgraphMemory {
            mapping.size() * sizeof(NodeID) / 1000;           //
   }
 };
+
+SpanSubgraphExtractionResult extract_span_subgraphs(PartitionedGraph &p_graph, BlockID input_k);
+
+SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential(
+    PartitionedGraph &p_graph, const std::array<BlockID, 2> &final_ks, const BlockID b_test
+);
 
 SubgraphExtractionResult extract_subgraphs(
     const PartitionedGraph &p_graph, BlockID input_k, SubgraphMemory &subgraph_memory

@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "kaminpar-shm/datastructures/abstract_graph.h"
+#include "kaminpar-shm/datastructures/block_induced_subgraph.h"
 #include "kaminpar-shm/datastructures/compressed_graph.h"
 #include "kaminpar-shm/datastructures/csr_graph.h"
 #include "kaminpar-shm/kaminpar.h"
@@ -221,23 +222,19 @@ public:
   }
 
   [[nodiscard]] CSRGraph &csr_graph() {
-    AbstractGraph *abstract_graph = _underlying_graph.get();
-    return *dynamic_cast<CSRGraph *>(abstract_graph);
+    return *dynamic_cast<CSRGraph *>(underlying_graph());
   }
 
   [[nodiscard]] const CSRGraph &csr_graph() const {
-    const AbstractGraph *abstract_graph = _underlying_graph.get();
-    return *dynamic_cast<const CSRGraph *>(abstract_graph);
+    return *dynamic_cast<const CSRGraph *>(underlying_graph());
   }
 
   [[nodiscard]] CompressedGraph &compressed_graph() {
-    AbstractGraph *abstract_graph = _underlying_graph.get();
-    return *dynamic_cast<CompressedGraph *>(abstract_graph);
+    return *dynamic_cast<CompressedGraph *>(underlying_graph());
   }
 
   [[nodiscard]] const CompressedGraph &compressed_graph() const {
-    const AbstractGraph *abstract_graph = _underlying_graph.get();
-    return *dynamic_cast<const CompressedGraph *>(abstract_graph);
+    return *dynamic_cast<const CompressedGraph *>(underlying_graph());
   }
 
   template <typename Lambda1, typename Lambda2> decltype(auto) reified(Lambda1 &&l1, Lambda2 &&l2) {
@@ -257,7 +254,7 @@ public:
 
   template <typename Lambda1, typename Lambda2>
   decltype(auto) reified(Lambda1 &&l1, Lambda2 &&l2) const {
-    AbstractGraph *abstract_graph = _underlying_graph.get();
+    const AbstractGraph *abstract_graph = _underlying_graph.get();
 
     if (const auto *csr_graph = dynamic_cast<const CSRGraph *>(abstract_graph);
         csr_graph != nullptr) {
@@ -273,11 +270,92 @@ public:
   }
 
   template <typename Lambda> decltype(auto) reified(Lambda &&l) {
-    return reified(std::forward<Lambda>(l), std::forward<Lambda>(l));
+    AbstractGraph *abstract_graph = _underlying_graph.get();
+
+    if (auto *csr_graph = dynamic_cast<CSRGraph *>(abstract_graph); csr_graph != nullptr) {
+      return l(*csr_graph);
+    }
+
+    if (auto *compressed_graph = dynamic_cast<CompressedGraph *>(abstract_graph);
+        compressed_graph != nullptr) {
+      return l(*compressed_graph);
+    }
+
+    if (auto *csr_graph = dynamic_cast<BlockInducedSubgraph<CSRGraph> *>(abstract_graph);
+        csr_graph != nullptr) {
+      return l(*csr_graph);
+    }
+
+    if (auto *compressed_graph =
+            dynamic_cast<BlockInducedSubgraph<CompressedGraph> *>(abstract_graph);
+        compressed_graph != nullptr) {
+      return l(*compressed_graph);
+    }
+
+    __builtin_unreachable();
   }
 
   template <typename Lambda> decltype(auto) reified(Lambda &&l) const {
-    return reified(std::forward<Lambda>(l), std::forward<Lambda>(l));
+    const AbstractGraph *abstract_graph = _underlying_graph.get();
+
+    if (const auto *csr_graph = dynamic_cast<const CSRGraph *>(abstract_graph);
+        csr_graph != nullptr) {
+      return l(*csr_graph);
+    }
+
+    if (const auto *compressed_graph = dynamic_cast<const CompressedGraph *>(abstract_graph);
+        compressed_graph != nullptr) {
+      return l(*compressed_graph);
+    }
+
+    if (const auto *csr_graph =
+            dynamic_cast<const BlockInducedSubgraph<CSRGraph> *>(abstract_graph);
+        csr_graph != nullptr) {
+      return l(*csr_graph);
+    }
+
+    if (const auto *compressed_graph =
+            dynamic_cast<const BlockInducedSubgraph<CompressedGraph> *>(abstract_graph);
+        compressed_graph != nullptr) {
+      return l(*compressed_graph);
+    }
+
+    __builtin_unreachable();
+  }
+
+  template <typename Lambda> decltype(auto) block_induced_reified(Lambda &&l) {
+    AbstractGraph *abstract_graph = _underlying_graph.get();
+
+    if (auto *csr_graph = dynamic_cast<BlockInducedSubgraph<CSRGraph> *>(abstract_graph);
+        csr_graph != nullptr) {
+      return l(*csr_graph);
+    }
+
+    if (auto *compressed_graph =
+            dynamic_cast<BlockInducedSubgraph<CompressedGraph> *>(abstract_graph);
+        compressed_graph != nullptr) {
+      return l(*compressed_graph);
+    }
+
+    __builtin_unreachable();
+  }
+
+  template <typename Lambda> decltype(auto) block_induced_reified(Lambda &&l) const {
+    const AbstractGraph *abstract_graph = _underlying_graph.get();
+
+    if (const auto *csr_graph =
+            dynamic_cast<const BlockInducedSubgraph<CSRGraph> *>(abstract_graph);
+        csr_graph != nullptr) {
+      return l(*csr_graph);
+    }
+
+    if (const auto *compressed_graph =
+            dynamic_cast<const BlockInducedSubgraph<CompressedGraph> *>(abstract_graph);
+        compressed_graph != nullptr) {
+      return l(*compressed_graph);
+    }
+
+    __builtin_unreachable();
   }
 
 private:

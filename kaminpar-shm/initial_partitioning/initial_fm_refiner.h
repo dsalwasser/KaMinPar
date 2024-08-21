@@ -7,7 +7,7 @@
  ******************************************************************************/
 #pragma once
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
+#include "kaminpar-shm/datastructures/graph.h"
 #include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/initial_partitioning/initial_refiner.h"
 #include "kaminpar-shm/kaminpar.h"
@@ -20,7 +20,7 @@ namespace kaminpar::shm {
 
 namespace fm {
 struct SimpleStoppingPolicy {
-  void init(const CSRGraph *graph);
+  void init(const Graph *graph);
   [[nodiscard]] bool should_stop(const InitialRefinementContext &fm_ctx);
   void reset();
   void update(EdgeWeight gain);
@@ -33,7 +33,7 @@ private:
 // Implementation copied from: KaHyPar -> AdvancedRandomWalkModelStopsSearch,
 // Copyright (C) Sebastian Schlag
 struct AdaptiveStoppingPolicy {
-  void init(const CSRGraph *graph);
+  void init(const Graph *graph);
   [[nodiscard]] bool should_stop(const InitialRefinementContext &fm_ctx);
   void reset();
   void update(EdgeWeight gain);
@@ -70,28 +70,28 @@ class InitialFMRefiner : public InitialRefiner {
 public:
   explicit InitialFMRefiner(const InitialRefinementContext &r_ctx) : _r_ctx(r_ctx) {}
 
-  void init(const CSRGraph &graph) final;
+  void init(const Graph &graph) final;
 
-  bool refine(PartitionedCSRGraph &p_graph, const PartitionContext &p_ctx) final;
+  bool refine(PartitionedGraph &p_graph, const PartitionContext &p_ctx) final;
 
 private:
   [[nodiscard]] bool abort(EdgeWeight prev_edge_weight, EdgeWeight cur_edge_weight) const;
 
-  EdgeWeight round(PartitionedCSRGraph &p_graph);
+  EdgeWeight round(PartitionedGraph &p_graph);
 
-  void init_pq(const PartitionedCSRGraph &p_graph);
+  void init_pq(const PartitionedGraph &p_graph);
 
-  void insert_node(const PartitionedCSRGraph &p_graph, NodeID u);
+  void insert_node(const PartitionedGraph &p_graph, NodeID u);
 
-  EdgeWeight compute_gain_from_scratch(const PartitionedCSRGraph &p_graph, NodeID u);
+  EdgeWeight compute_gain_from_scratch(const PartitionedGraph &p_graph, NodeID u);
 
   void init_weighted_degrees();
 
-  bool is_boundary_node(const PartitionedCSRGraph &p_graph, NodeID u);
+  bool is_boundary_node(const PartitionedGraph &p_graph, NodeID u);
 
-  bool validate_pqs(const PartitionedCSRGraph &p_graph);
+  bool validate_pqs(const PartitionedGraph &p_graph);
 
-  const CSRGraph *_graph;
+  const Graph *_graph;
   const PartitionContext *_p_ctx;
   const InitialRefinementContext &_r_ctx;
 

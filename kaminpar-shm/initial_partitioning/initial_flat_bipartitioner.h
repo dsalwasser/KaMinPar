@@ -9,7 +9,7 @@
 
 #include <array>
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
+#include "kaminpar-shm/datastructures/graph.h"
 #include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/kaminpar.h"
 
@@ -27,9 +27,9 @@ public:
 
   virtual ~InitialFlatBipartitioner() = default;
 
-  virtual void init(const CSRGraph &graph, const PartitionContext &p_ctx);
+  virtual void init(const Graph &graph, const PartitionContext &p_ctx);
 
-  PartitionedCSRGraph
+  PartitionedGraph
   bipartition(StaticArray<BlockID> partition, StaticArray<BlockWeight> block_weights);
 
 protected:
@@ -72,7 +72,7 @@ protected:
     return 1 - b;
   }
 
-  const CSRGraph *_graph;
+  const Graph *_graph;
   const PartitionContext *_p_ctx;
   const InitialPoolPartitionerContext &_pool_ctx;
 

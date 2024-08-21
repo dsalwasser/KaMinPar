@@ -423,6 +423,7 @@ struct PartitioningContext {
   InitialPartitioningMode deep_initial_partitioning_mode;
   double deep_initial_partitioning_load;
   int min_consecutive_seq_bipartitioning_levels;
+  bool use_subgraph_memory;
 };
 
 struct GraphCompressionContext {

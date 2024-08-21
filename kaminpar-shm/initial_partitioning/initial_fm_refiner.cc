@@ -23,7 +23,7 @@ SET_DEBUG(false);
 using Queues = std::array<BinaryMinHeap<EdgeWeight>, 2>;
 
 namespace fm {
-void SimpleStoppingPolicy::init(const CSRGraph *) {
+void SimpleStoppingPolicy::init(const Graph *) {
   reset();
 }
 
@@ -39,7 +39,7 @@ void SimpleStoppingPolicy::update(const EdgeWeight) {
   ++_num_steps;
 }
 
-void AdaptiveStoppingPolicy::init(const CSRGraph *graph) {
+void AdaptiveStoppingPolicy::init(const Graph *graph) {
   _beta = std::sqrt(graph->n());
   reset();
 }
@@ -78,10 +78,7 @@ void AdaptiveStoppingPolicy::update(const EdgeWeight gain) {
 //! balance.
 struct MaxWeightSelectionPolicy {
   std::size_t operator()(
-      const PartitionedCSRGraph &p_graph,
-      const PartitionContext &context,
-      const Queues &,
-      Random &rand
+      const PartitionedGraph &p_graph, const PartitionContext &context, const Queues &, Random &rand
   ) {
     const auto weight0 = p_graph.block_weight(0) - context.block_weights.perfectly_balanced(0);
     const auto weight1 = p_graph.block_weight(1) - context.block_weights.perfectly_balanced(1);
@@ -92,7 +89,7 @@ struct MaxWeightSelectionPolicy {
 //! Always select the node with the highest gain / lowest loss.
 struct MaxGainSelectionPolicy {
   std::size_t operator()(
-      const PartitionedCSRGraph &p_graph,
+      const PartitionedGraph &p_graph,
       const PartitionContext &context,
       const Queues &queues,
       Random &rand
@@ -112,7 +109,7 @@ struct MaxGainSelectionPolicy {
 
 struct MaxOverloadSelectionPolicy {
   std::size_t operator()(
-      const PartitionedCSRGraph &p_graph,
+      const PartitionedGraph &p_graph,
       const PartitionContext &context,
       const Queues &queues,
       Random &rand
@@ -134,7 +131,7 @@ struct MaxOverloadSelectionPolicy {
 //! cut is not balanced.
 struct BalancedMinCutAcceptancePolicy {
   bool operator()(
-      const PartitionedCSRGraph &,
+      const PartitionedGraph &,
       const PartitionContext &,
       const EdgeWeight accepted_overload,
       const EdgeWeight current_overload,
@@ -148,7 +145,7 @@ struct BalancedMinCutAcceptancePolicy {
 
 template <typename QueueSelectionPolicy, typename CutAcceptancePolicy, typename StoppingPolicy>
 void InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>::init(
-    const CSRGraph &graph
+    const Graph &graph
 ) {
   _graph = &graph;
   _stopping_policy.init(&graph);
@@ -171,7 +168,7 @@ void InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>
 
 template <typename QueueSelectionPolicy, typename CutAcceptancePolicy, typename StoppingPolicy>
 bool InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>::refine(
-    PartitionedCSRGraph &p_graph, const PartitionContext &p_ctx
+    PartitionedGraph &p_graph, const PartitionContext &p_ctx
 ) {
   _p_ctx = &p_ctx;
 
@@ -215,7 +212,7 @@ bool InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>
 
 template <typename QueueSelectionPolicy, typename CutAcceptancePolicy, typename StoppingPolicy>
 EdgeWeight InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>::round(
-    PartitionedCSRGraph &p_graph
+    PartitionedGraph &p_graph
 ) {
   DBG << "Initial refiner initialized with n=" << p_graph.n() << ", m=" << p_graph.m()
       << ", k=" << p_graph.k();
@@ -340,7 +337,7 @@ EdgeWeight InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingP
 
 template <typename QueueSelectionPolicy, typename CutAcceptancePolicy, typename StoppingPolicy>
 void InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>::init_pq(
-    const PartitionedCSRGraph &p_graph
+    const PartitionedGraph &p_graph
 ) {
   KASSERT(_queues[0].empty());
   KASSERT(_queues[1].empty());
@@ -369,7 +366,7 @@ void InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>
 
 template <typename QueueSelectionPolicy, typename CutAcceptancePolicy, typename StoppingPolicy>
 void InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>::insert_node(
-    const PartitionedCSRGraph &p_graph, const NodeID u
+    const PartitionedGraph &p_graph, const NodeID u
 ) {
   const EdgeWeight gain = compute_gain_from_scratch(p_graph, u);
   const BlockID u_block = p_graph.block(u);
@@ -380,7 +377,7 @@ void InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>
 
 template <typename QueueSelectionPolicy, typename CutAcceptancePolicy, typename StoppingPolicy>
 EdgeWeight InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>::
-    compute_gain_from_scratch(const PartitionedCSRGraph &p_graph, const NodeID u) {
+    compute_gain_from_scratch(const PartitionedGraph &p_graph, const NodeID u) {
   const BlockID u_block = p_graph.block(u);
   EdgeWeight weighted_external_degree = 0;
   p_graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight weight) {
@@ -395,16 +392,14 @@ void InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>
     init_weighted_degrees() {
   for (const NodeID u : _graph->nodes()) {
     EdgeWeight weighted_degree = 0;
-    for (const EdgeID e : _graph->incident_edges(u)) {
-      weighted_degree += _graph->edge_weight(e);
-    }
+    _graph->adjacent_nodes(u, [&](const NodeID, const EdgeWeight w) { weighted_degree += w; });
     _weighted_degrees[u] = weighted_degree;
   }
 }
 
 template <typename QueueSelectionPolicy, typename CutAcceptancePolicy, typename StoppingPolicy>
 bool InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>::is_boundary_node(
-    const PartitionedCSRGraph &p_graph, const NodeID u
+    const PartitionedGraph &p_graph, const NodeID u
 ) {
   bool boundary_node = false;
   p_graph.adjacent_nodes(u, [&](const NodeID v) {
@@ -421,7 +416,7 @@ bool InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>
 
 template <typename QueueSelectionPolicy, typename CutAcceptancePolicy, typename StoppingPolicy>
 bool InitialFMRefiner<QueueSelectionPolicy, CutAcceptancePolicy, StoppingPolicy>::validate_pqs(
-    const PartitionedCSRGraph &p_graph
+    const PartitionedGraph &p_graph
 ) {
   for (const NodeID u : p_graph.nodes()) {
     if (is_boundary_node(p_graph, u)) {

@@ -46,7 +46,7 @@ InitialMultilevelBipartitioner::InitialMultilevelBipartitioner(const Context &ct
       _bipartitioner(std::make_unique<InitialPoolBipartitioner>(_i_ctx.pool)),
       _refiner(create_initial_refiner(_i_ctx.refinement)) {}
 
-void InitialMultilevelBipartitioner::init(const CSRGraph &graph, const BlockID final_k) {
+void InitialMultilevelBipartitioner::init(const Graph &graph, const BlockID final_k) {
   _graph = &graph;
 
   const auto [final_k1, final_k2] = math::split_integral(final_k);
@@ -60,18 +60,18 @@ void InitialMultilevelBipartitioner::init(const CSRGraph &graph, const BlockID f
   _bipartitioner->set_num_repetitions(num_bipartition_repetitions);
 }
 
-PartitionedCSRGraph InitialMultilevelBipartitioner::partition(InitialPartitionerTimings *timings) {
+PartitionedGraph InitialMultilevelBipartitioner::partition(InitialPartitionerTimings *timings) {
   timer::LocalTimer timer;
 
   timer.reset();
-  const CSRGraph *c_graph = coarsen(timings);
+  const Graph *c_graph = coarsen(timings);
   if (timings) {
     timings->coarsening_ms += timer.elapsed();
   }
 
   timer.reset();
   _bipartitioner->init(*c_graph, _p_ctx);
-  PartitionedCSRGraph p_graph = _bipartitioner->bipartition();
+  PartitionedGraph p_graph = _bipartitioner->bipartition();
 
   if (_i_ctx.refine_pool_partition) {
     _refiner->init(p_graph.graph());
@@ -91,7 +91,7 @@ PartitionedCSRGraph InitialMultilevelBipartitioner::partition(InitialPartitioner
   return p_graph;
 }
 
-const CSRGraph *InitialMultilevelBipartitioner::coarsen(InitialPartitionerTimings *timings) {
+const Graph *InitialMultilevelBipartitioner::coarsen(InitialPartitionerTimings *timings) {
   timer::LocalTimer timer;
 
   timer.reset();
@@ -100,7 +100,7 @@ const CSRGraph *InitialMultilevelBipartitioner::coarsen(InitialPartitionerTiming
       _i_ctx.coarsening, _p_ctx, _graph->n(), _graph->total_node_weight()
   );
 
-  const CSRGraph *c_graph = _graph;
+  const Graph *c_graph = _graph;
 
   bool shrunk = true;
   DBG << "Coarsen: n=" << c_graph->n() << " m=" << c_graph->m();
@@ -135,7 +135,7 @@ const CSRGraph *InitialMultilevelBipartitioner::coarsen(InitialPartitionerTiming
   return c_graph;
 }
 
-PartitionedCSRGraph InitialMultilevelBipartitioner::uncoarsen(PartitionedCSRGraph p_graph) {
+PartitionedGraph InitialMultilevelBipartitioner::uncoarsen(PartitionedGraph p_graph) {
   DBG << "Uncoarsen: n=" << p_graph.n() << " m=" << p_graph.m();
 
   while (!_coarsener->empty()) {

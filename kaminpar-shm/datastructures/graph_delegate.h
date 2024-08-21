@@ -32,6 +32,14 @@ public:
     return _graph->reified(std::forward<Lambda>(l));
   }
 
+  template <typename Lambda> decltype(auto) block_induced_reified(Lambda &&l) {
+    return const_cast<Graph *>(_graph)->block_induced_reified(std::forward<Lambda>(l));
+  }
+
+  template <typename Lambda> decltype(auto) block_induced_reified(Lambda &&l) const {
+    return _graph->block_induced_reified(std::forward<Lambda>(l));
+  }
+
   template <typename ConcreteGraph> [[nodiscard]] ConcreteGraph &concretize() {
     return _graph->template concretize<ConcreteGraph>();
   }

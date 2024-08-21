@@ -14,25 +14,25 @@
 #include "kaminpar-common/datastructures/scalable_vector.h"
 
 namespace kaminpar::shm {
-void SequentialGraphHierarchy::init(const CSRGraph &graph) {
+void SequentialGraphHierarchy::init(const Graph &graph) {
   _finest_graph = &graph;
 
   _coarse_mappings.clear();
   _coarse_graphs.clear();
 }
 
-void SequentialGraphHierarchy::push(CSRGraph &&c_graph, StaticArray<NodeID> &&c_mapping) {
+void SequentialGraphHierarchy::push(Graph &&c_graph, StaticArray<NodeID> &&c_mapping) {
   KASSERT(current().n() == c_mapping.size());
 
   _coarse_mappings.push_back(std::move(c_mapping));
   _coarse_graphs.push_back(std::move(c_graph));
 }
 
-[[nodiscard]] const CSRGraph &SequentialGraphHierarchy::current() const {
+[[nodiscard]] const Graph &SequentialGraphHierarchy::current() const {
   return _coarse_graphs.empty() ? *_finest_graph : _coarse_graphs.back();
 }
 
-PartitionedCSRGraph SequentialGraphHierarchy::pop(PartitionedCSRGraph &&coarse_p_graph) {
+PartitionedGraph SequentialGraphHierarchy::pop(PartitionedGraph &&coarse_p_graph) {
   KASSERT(!_coarse_graphs.empty());
   KASSERT(&_coarse_graphs.back() == &coarse_p_graph.graph());
 
@@ -40,7 +40,7 @@ PartitionedCSRGraph SequentialGraphHierarchy::pop(PartitionedCSRGraph &&coarse_p
   StaticArray<NodeID> c_mapping = std::move(_coarse_mappings.back());
   _coarse_mappings.pop_back();
 
-  const CSRGraph &graph = get_second_coarsest_graph();
+  const Graph &graph = get_second_coarsest_graph();
   KASSERT(graph.n() == c_mapping.size());
 
   StaticArray<BlockID> partition = alloc_partition_memory();
@@ -54,7 +54,7 @@ PartitionedCSRGraph SequentialGraphHierarchy::pop(PartitionedCSRGraph &&coarse_p
 
   // Recover the memory of the coarsest graph before free'ing the graph object:
   recover_mapping_memory(std::move(c_mapping));
-  recover_graph_memory(std::move(_coarse_graphs.back()));
+  // TODO: recover_graph_memory(std::move(_coarse_graphs.back()));
 
   // ... the partition array of the coarsest graph is managed by the PoolBipartitioner
   // instead of the PartitionedCSRGraph object: do not push it back to the memory cache
@@ -64,10 +64,10 @@ PartitionedCSRGraph SequentialGraphHierarchy::pop(PartitionedCSRGraph &&coarse_p
 
   _coarse_graphs.pop_back();
 
-  return {PartitionedCSRGraph::seq{}, graph, coarse_p_graph.k(), std::move(partition)};
+  return {PartitionedGraph::seq{}, graph, coarse_p_graph.k(), std::move(partition)};
 }
 
-const CSRGraph &SequentialGraphHierarchy::get_second_coarsest_graph() const {
+const Graph &SequentialGraphHierarchy::get_second_coarsest_graph() const {
   KASSERT(!_coarse_graphs.empty());
 
   return (_coarse_graphs.size() > 1) ? _coarse_graphs[_coarse_graphs.size() - 2] : *_finest_graph;

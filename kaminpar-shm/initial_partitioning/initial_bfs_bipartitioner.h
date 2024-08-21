@@ -9,7 +9,7 @@
 
 #include <array>
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
+#include "kaminpar-shm/datastructures/graph.h"
 #include "kaminpar-shm/initial_partitioning/initial_flat_bipartitioner.h"
 #include "kaminpar-shm/kaminpar.h"
 
@@ -41,7 +41,7 @@ class InitialBFSBipartitioner : public InitialFlatBipartitioner {
 public:
   InitialBFSBipartitioner(const InitialPoolPartitionerContext &pool_ctx);
 
-  void init(const CSRGraph &graph, const PartitionContext &p_ctx) final;
+  void init(const Graph &graph, const PartitionContext &p_ctx) final;
 
 protected:
   void fill_bipartition() final;

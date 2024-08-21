@@ -6,9 +6,12 @@
  ******************************************************************************/
 #include "kaminpar-shm/graphutils/subgraph_extractor.h"
 
+#include <array>
+
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 
+#include "kaminpar-shm/datastructures/block_induced_subgraph.h"
 #include "kaminpar-shm/datastructures/graph.h"
 #include "kaminpar-shm/kaminpar.h"
 #include "kaminpar-shm/metrics.h"
@@ -177,6 +180,83 @@ SequentialSubgraphExtractionResult extract_subgraphs_sequential(
 }
 
 namespace {
+template <typename Graph>
+SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential_generic_graph(
+    const PartitionedGraph &p_graph,
+    Graph &graph,
+    const std::array<BlockID, 2> &final_ks,
+    const BlockID b_test
+) {
+  KASSERT(p_graph.k() == 2u, "Only suitable for bipartitions!", assert::light);
+
+  StaticArray<NodeID> &global_to_local = graph.global_to_local();
+  StaticArray<NodeID> &local_to_global = graph.local_to_global();
+
+  std::array<NodeID, 2> s_n{0, 0};
+  std::array<EdgeID, 2> s_m{0, 0};
+
+  std::array<NodeWeight, 2> s_max_node_weight{0, 0};
+  std::array<NodeWeight, 2> s_total_node_weight{0, 0};
+  std::array<EdgeWeight, 2> s_total_edge_weight{0, 0};
+
+  for (const NodeID u : graph.nodes()) {
+    const BlockID b = p_graph.block(u);
+    s_n[b] += 1;
+
+    const NodeWeight u_weight = graph.node_weight(u);
+    s_max_node_weight[b] = std::max(s_max_node_weight[b], u_weight);
+    s_total_node_weight[b] += u_weight;
+
+    graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight w) {
+      if (p_graph.block(v) != b) {
+        return;
+      }
+
+      s_m[b] += 1;
+      s_total_edge_weight[b] += w;
+    });
+  }
+
+  std::array<NodeID, 2> s_i{0, 0};
+  std::array<StaticArray<NodeID>, 2> s_local_to_global{s_n[0], s_n[1]};
+
+  for (const NodeID u : graph.nodes()) {
+    const BlockID b = p_graph.block(u);
+    const NodeID u_local = s_i[b]++;
+
+    global_to_local[local_to_global[u]] = u_local;
+    s_local_to_global[b][u_local] = local_to_global[u];
+  }
+
+  const auto create_graph = [&](const BlockID b) {
+    return shm::Graph(std::make_unique<Graph>(
+        graph.underlying_graph(),
+        graph.partition(),
+        s_n[b],
+        s_m[b],
+        s_max_node_weight[b],
+        s_total_node_weight[b],
+        s_total_edge_weight[b],
+        b_test + b,
+        StaticArray<BlockID>(global_to_local.size(), global_to_local.data()),
+        std::move(s_local_to_global[b])
+    ));
+  };
+  std::array<shm::Graph, 2> subgraphs{create_graph(0), create_graph(1)};
+
+  return {std::move(subgraphs)};
+}
+} // namespace
+
+SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential(
+    PartitionedGraph &p_graph, const std::array<BlockID, 2> &final_ks, const BlockID b_test
+) {
+  return p_graph.block_induced_reified([&](auto &graph) {
+    return extract_span_subgraphs_sequential_generic_graph(p_graph, graph, final_ks, b_test);
+  });
+}
+
+namespace {
 /*
  * Builds a block-induced subgraph for each block of a partitioned graph. Return
  * type contains a mapping that maps nodes from p_graph to nodes in the
@@ -335,6 +415,149 @@ SubgraphExtractionResult extract_subgraphs(
 ) {
   return p_graph.reified([&](const auto &concrete_graph) {
     return extract_subgraphs_generic_graph(p_graph, concrete_graph, input_k, subgraph_memory);
+  });
+}
+
+namespace {
+template <typename Graph>
+SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
+    PartitionedGraph &p_graph, const Graph &graph, BlockID input_k
+) {
+  const NodeID num_blocks = p_graph.k();
+
+  std::vector<NodeID> local_num_nodes(num_blocks);
+  std::vector<EdgeID> local_num_edges(num_blocks);
+  std::vector<NodeWeight> local_max_node_weight(num_blocks);
+  std::vector<NodeWeight> local_total_node_weight(num_blocks);
+  std::vector<EdgeWeight> local_total_edge_weight(num_blocks);
+  TIMED_SCOPE("Compute subgraph stats") {
+    tbb::enumerable_thread_specific<ScalableVector<NodeID>> local_num_nodes_ets{[&] {
+      return ScalableVector<NodeID>(num_blocks);
+    }};
+    tbb::enumerable_thread_specific<ScalableVector<EdgeID>> local_num_edges_ets{[&] {
+      return ScalableVector<EdgeID>(num_blocks);
+    }};
+    tbb::enumerable_thread_specific<ScalableVector<NodeWeight>> local_max_node_weight_ets{[&] {
+      return ScalableVector<NodeWeight>(num_blocks);
+    }};
+    tbb::enumerable_thread_specific<ScalableVector<NodeWeight>> local_total_node_weight_ets{[&] {
+      return ScalableVector<NodeWeight>(num_blocks);
+    }};
+    tbb::enumerable_thread_specific<ScalableVector<EdgeWeight>> local_total_edge_weight_ets{[&] {
+      return ScalableVector<EdgeWeight>(num_blocks);
+    }};
+
+    tbb::parallel_for(tbb::blocked_range<NodeID>(0, graph.n()), [&](auto &local_nodes) {
+      auto &local_num_nodes = local_num_nodes_ets.local();
+      auto &local_num_edges = local_num_edges_ets.local();
+      auto &local_max_node_weight = local_max_node_weight_ets.local();
+      auto &local_total_node_weight = local_total_node_weight_ets.local();
+      auto &local_total_edge_weight = local_total_edge_weight_ets.local();
+
+      const NodeID first_local_node = local_nodes.begin();
+      const NodeID last_local_node = local_nodes.end();
+      for (NodeID u = first_local_node; u < last_local_node; ++u) {
+        const BlockID u_block = p_graph.block(u);
+        const NodeWeight u_weight = graph.node_weight(u);
+
+        local_num_nodes[u_block] += 1;
+        local_total_node_weight[u_block] += u_weight;
+        local_max_node_weight[u_block] = std::max(local_max_node_weight[u_block], u_weight);
+
+        graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight w) {
+          if (p_graph.block(v) != u_block) {
+            return;
+          }
+
+          local_num_edges[u_block] += 1;
+          local_total_edge_weight[u_block] += w;
+        });
+      }
+    });
+
+    tbb::parallel_for<BlockID>(0, num_blocks, [&](const BlockID b) {
+      NodeID num_nodes = 0;
+      for (const auto &local_num_nodes : local_num_nodes_ets) {
+        num_nodes += local_num_nodes[b];
+      }
+      local_num_nodes[b] = num_nodes;
+
+      EdgeID num_edges = 0;
+      for (const auto &local_num_edges : local_num_edges_ets) {
+        num_edges += local_num_edges[b];
+      }
+      local_num_edges[b] = num_edges;
+
+      NodeWeight max_node_weight = 0;
+      for (const auto &local_max_node_weight : local_max_node_weight_ets) {
+        max_node_weight = std::max(local_max_node_weight[b], max_node_weight);
+      }
+      local_max_node_weight[b] = max_node_weight;
+
+      NodeWeight total_node_weight = 0;
+      for (const auto &local_total_node_weight : local_total_node_weight_ets) {
+        total_node_weight += local_total_node_weight[b];
+      }
+      local_total_node_weight[b] = total_node_weight;
+
+      EdgeWeight total_edge_weight = 0;
+      for (const auto &local_total_edge_weight : local_total_edge_weight_ets) {
+        total_node_weight += local_total_edge_weight[b];
+      }
+      local_total_edge_weight[b] = total_edge_weight;
+    });
+  };
+
+  StaticArray<NodeID> global_to_local(graph.n(), static_array::noinit);
+
+  std::vector<StaticArray<NodeID>> local_to_global_mappings;
+  local_to_global_mappings.resize(num_blocks);
+  tbb::parallel_for<BlockID>(0, num_blocks, [&](const BlockID b) {
+    local_to_global_mappings[b] = StaticArray<NodeID>(local_num_nodes[b], static_array::noinit);
+  });
+
+  TIMED_SCOPE("Fill mappings") {
+    std::vector<NodeID> local_to_global_size(num_blocks);
+    tbb::parallel_for(tbb::blocked_range<NodeID>(0, graph.n()), [&](auto &local_nodes) {
+      const NodeID first_local_node = local_nodes.begin();
+      const NodeID last_local_node = local_nodes.end();
+
+      for (NodeID u = first_local_node; u < last_local_node; ++u) {
+        const BlockID u_block = p_graph.block(u);
+        const NodeID u_local =
+            __atomic_fetch_add(&local_to_global_size[u_block], 1, __ATOMIC_RELAXED);
+
+        global_to_local[u] = u_local;
+        local_to_global_mappings[u_block][u_local] = u;
+      }
+    });
+  };
+
+  ScalableVector<shm::Graph> subgraphs(num_blocks);
+  TIMED_SCOPE("Construct graph objects") {
+    tbb::parallel_for<BlockID>(0, num_blocks, [&](const BlockID b) {
+      subgraphs[b] = shm::Graph(std::make_unique<BlockInducedSubgraph<Graph>>(
+          &graph,
+          StaticArray<BlockID>(graph.n(), p_graph.raw_partition().data()),
+          local_num_nodes[b],
+          local_num_edges[b],
+          local_max_node_weight[b],
+          local_total_node_weight[b],
+          local_total_edge_weight[b],
+          b,
+          StaticArray<BlockID>(global_to_local.size(), global_to_local.data()),
+          std::move(local_to_global_mappings[b])
+      ));
+    });
+  };
+
+  return {std::move(subgraphs), std::move(global_to_local)};
+}
+} // namespace
+
+SpanSubgraphExtractionResult extract_span_subgraphs(PartitionedGraph &p_graph, BlockID input_k) {
+  return p_graph.reified([&](const auto &graph) {
+    return extract_span_subgraphs_generic_graph(p_graph, graph, input_k);
   });
 }
 

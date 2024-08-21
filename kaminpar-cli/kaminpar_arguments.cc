@@ -76,6 +76,13 @@ CLI::Option_group *create_partitioning_options(CLI::App *app, Context &ctx) {
           "(set to '0' for the old behaviour)"
       )
       ->capture_default_str();
+  partitioning
+      ->add_option(
+          "--p-use-subgraph-memory",
+          ctx.partitioning.use_subgraph_memory,
+          "Whether to use subgraph memory for bipartitioning"
+      )
+      ->capture_default_str();
 
   create_partitioning_rearrangement_options(app, ctx);
 

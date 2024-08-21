@@ -69,7 +69,7 @@ void InitialPoolBipartitioner::set_num_repetitions(const int num_repetitions) {
   _num_repetitions = num_repetitions;
 }
 
-void InitialPoolBipartitioner::init(const CSRGraph &graph, const PartitionContext &p_ctx) {
+void InitialPoolBipartitioner::init(const Graph &graph, const PartitionContext &p_ctx) {
   _graph = &graph;
   _p_ctx = &p_ctx;
 
@@ -102,7 +102,7 @@ void InitialPoolBipartitioner::reset() {
   _best_imbalance = 0.0;
 }
 
-PartitionedCSRGraph InitialPoolBipartitioner::bipartition() {
+PartitionedGraph InitialPoolBipartitioner::bipartition() {
   KASSERT(_current_partition.size() >= _graph->n());
   KASSERT(_best_partition.size() >= _graph->n());
 
@@ -186,7 +186,7 @@ void InitialPoolBipartitioner::print_statistics() {
 }
 
 void InitialPoolBipartitioner::run_bipartitioner(const std::size_t i) {
-  PartitionedCSRGraph p_graph = _bipartitioners[i]->bipartition(
+  PartitionedGraph p_graph = _bipartitioners[i]->bipartition(
       std::move(_current_partition), std::move(_current_block_weights)
   );
   _refiner->refine(p_graph, *_p_ctx);

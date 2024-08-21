@@ -7,14 +7,10 @@
  ******************************************************************************/
 #include "kaminpar-shm/initial_partitioning/initial_noop_refiner.h"
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
-#include "kaminpar-shm/datastructures/partitioned_graph.h"
-#include "kaminpar-shm/kaminpar.h"
-
 namespace kaminpar::shm {
-void InitialNoopRefiner::init(const CSRGraph &) {}
+void InitialNoopRefiner::init(const Graph &) {}
 
-bool InitialNoopRefiner::refine(PartitionedCSRGraph &, const PartitionContext &) {
+bool InitialNoopRefiner::refine(PartitionedGraph &, const PartitionContext &) {
   return false;
 }
 } // namespace kaminpar::shm

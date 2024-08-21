@@ -18,7 +18,7 @@ constexpr static bool kRandomizeNodeOrder = true;
 
 InitialCoarsener::InitialCoarsener(const InitialCoarseningContext &c_ctx) : _c_ctx(c_ctx) {}
 
-void InitialCoarsener::init(const CSRGraph &graph) {
+void InitialCoarsener::init(const Graph &graph) {
   _input_graph = &graph;
   _current_graph = &graph;
   _hierarchy.init(graph);
@@ -45,7 +45,7 @@ void InitialCoarsener::init(const CSRGraph &graph) {
   _precomputed_clustering = false;
 }
 
-const CSRGraph *InitialCoarsener::coarsen(const NodeWeight max_cluster_weight) {
+const Graph *InitialCoarsener::coarsen(const NodeWeight max_cluster_weight) {
   timer::LocalTimer timer;
 
   timer.reset();
@@ -70,8 +70,8 @@ const CSRGraph *InitialCoarsener::coarsen(const NodeWeight max_cluster_weight) {
   return _current_graph;
 }
 
-PartitionedCSRGraph InitialCoarsener::uncoarsen(PartitionedCSRGraph &&c_p_graph) {
-  PartitionedCSRGraph p_graph = _hierarchy.pop(std::move(c_p_graph));
+PartitionedGraph InitialCoarsener::uncoarsen(PartitionedGraph &&c_p_graph) {
+  PartitionedGraph p_graph = _hierarchy.pop(std::move(c_p_graph));
   _current_graph = &_hierarchy.current();
   return p_graph;
 }
@@ -202,7 +202,7 @@ InitialCoarsener::ContractionResult InitialCoarsener::contract_current_clusterin
     c_node_weights.resize(c_n, static_array::seq);
   }
 
-  // CSRGraph determines the number of nodes based on the size of the c_nodes array:
+  // Graph determines the number of nodes based on the size of the c_nodes array:
   // thus, we must set the right size, since the array is generally larger than the graph
   c_nodes.restrict(c_n + 1);
   c_node_weights.restrict(c_n);
@@ -266,7 +266,7 @@ InitialCoarsener::ContractionResult InitialCoarsener::contract_current_clusterin
 
     // Initialize clustering data structures for computing a clustering of the
     // coarse graph (interleaved clustering computation)
-    reset_current_clustering(c_n, c_node_weights);
+    reset_current_clustering(c_n, [&](const NodeID c_u) { return c_node_weights[c_u]; });
   }
   _timings.interleaved1_ms += timer.elapsed();
 
@@ -340,13 +340,13 @@ InitialCoarsener::ContractionResult InitialCoarsener::contract_current_clusterin
   _timings.interleaved2_ms += timer.elapsed();
 
   timer.reset();
-  CSRGraph coarse_graph(
+  Graph coarse_graph(std::make_unique<CSRGraph>(
       CSRGraph::seq{},
       std::move(c_nodes),
       std::move(c_edges),
       std::move(c_node_weights),
       std::move(c_edge_weights)
-  );
+  ));
   _timings.alloc_ms += timer.elapsed();
 
   return {std::move(coarse_graph), std::move(node_mapping)};
@@ -354,7 +354,9 @@ InitialCoarsener::ContractionResult InitialCoarsener::contract_current_clusterin
 
 void InitialCoarsener::reset_current_clustering() {
   if (_current_graph->is_node_weighted()) {
-    reset_current_clustering(_current_graph->n(), _current_graph->raw_node_weights());
+    reset_current_clustering(_current_graph->n(), [&](const NodeID u) {
+      return _current_graph->node_weight(u);
+    });
   } else {
     // This is robust if _current_graph is empty
     // (in this case, we cannot use node_weight(0))

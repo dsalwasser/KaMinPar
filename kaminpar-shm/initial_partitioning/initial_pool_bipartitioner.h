@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <memory>
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
+#include "kaminpar-shm/datastructures/graph.h"
 #include "kaminpar-shm/initial_partitioning/initial_flat_bipartitioner.h"
 #include "kaminpar-shm/initial_partitioning/initial_refiner.h"
 
@@ -54,7 +54,7 @@ public:
 
   void set_num_repetitions(int num_repetitions);
 
-  void init(const CSRGraph &graph, const PartitionContext &p_ctx);
+  void init(const Graph &graph, const PartitionContext &p_ctx);
 
   template <typename BipartitionerType> void register_bipartitioner(const std::string_view name) {
     KASSERT(
@@ -70,7 +70,7 @@ public:
 
   void reset();
 
-  PartitionedCSRGraph bipartition();
+  PartitionedGraph bipartition();
 
 private:
   void run_bipartitioner(std::size_t i);
@@ -81,7 +81,7 @@ private:
 
   void print_statistics();
 
-  const CSRGraph *_graph;
+  const Graph *_graph;
   const PartitionContext *_p_ctx;
 
   const InitialPoolPartitionerContext &_pool_ctx;

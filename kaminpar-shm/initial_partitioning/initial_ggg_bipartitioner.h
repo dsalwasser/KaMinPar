@@ -7,8 +7,9 @@
  ******************************************************************************/
 #pragma once
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
+#include "kaminpar-shm/datastructures/graph.h"
 #include "kaminpar-shm/initial_partitioning/initial_flat_bipartitioner.h"
+#include "kaminpar-shm/kaminpar.h"
 
 #include "kaminpar-common/datastructures/binary_heap.h"
 #include "kaminpar-common/datastructures/marker.h"
@@ -19,7 +20,7 @@ public:
   explicit InitialGGGBipartitioner(const InitialPoolPartitionerContext &pool_ctx)
       : InitialFlatBipartitioner(pool_ctx) {}
 
-  void init(const CSRGraph &graph, const PartitionContext &p_ctx) final;
+  void init(const Graph &graph, const PartitionContext &p_ctx) final;
 
 protected:
   void fill_bipartition() final;

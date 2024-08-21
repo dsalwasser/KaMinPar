@@ -7,12 +7,7 @@
  ******************************************************************************/
 #include "kaminpar-shm/initial_partitioning/initial_bfs_bipartitioner.h"
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
 #include "kaminpar-shm/initial_partitioning/seed_node_utils.h"
-#include "kaminpar-shm/kaminpar.h"
-
-#include "kaminpar-common/datastructures/marker.h"
-#include "kaminpar-common/datastructures/queue.h"
 
 namespace kaminpar::shm {
 using Queues = std::array<Queue<NodeID>, 2>;
@@ -76,7 +71,7 @@ InitialBFSBipartitioner<BlockSelectionStrategy>::InitialBFSBipartitioner(
 
 template <typename BlockSelectionStrategy>
 void InitialBFSBipartitioner<BlockSelectionStrategy>::init(
-    const CSRGraph &graph, const PartitionContext &p_ctx
+    const Graph &graph, const PartitionContext &p_ctx
 ) {
   InitialFlatBipartitioner::init(graph, p_ctx);
 

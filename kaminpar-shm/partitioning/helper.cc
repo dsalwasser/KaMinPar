@@ -9,7 +9,9 @@
 
 #include "kaminpar-shm/partitioning/partition_utils.h"
 
+#include "kaminpar-common/datastructures/static_array.h"
 #include "kaminpar-common/math.h"
+#include "kaminpar-common/parallel/algorithm.h"
 
 namespace kaminpar::shm::partitioning {
 namespace {
@@ -57,28 +59,10 @@ PartitionedGraph bipartition(
 ) {
   timer::LocalTimer timer;
 
-  const CSRGraph *csr = dynamic_cast<const CSRGraph *>(graph->underlying_graph());
-
-  // If we work with something other than a CSRGraph, construct a CSR copy to call the initial
-  // partitioning code
-  // This should only be necessary if the graph is too small for coarsening *and* we are using the
-  // compressed mode
-  std::unique_ptr<CSRGraph> csr_cpy;
-  if (csr == nullptr) {
-    DBG << "Bipartitioning a non-CSR graph is not supported by the initial partitioning code: "
-           "constructing a CSR-graph copy of the given graph with n="
-        << graph->n() << ", m=" << graph->m();
-    DBG << "Note: this should only happen when partitioning a very small graph using the "
-           "compressed mode";
-
-    csr_cpy = std::make_unique<CSRGraph>(*graph);
-    csr = csr_cpy.get();
-  }
-
   timer.reset();
   auto bipartition = [&] {
     InitialMultilevelBipartitioner bipartitioner = initial_bipartitioner_pool.get();
-    bipartitioner.init(*csr, final_k);
+    bipartitioner.init(*graph, final_k);
     auto bipartition =
         bipartitioner.partition(timings ? &(timings->ip_timings) : nullptr).take_raw_partition();
 
@@ -105,6 +89,69 @@ PartitionedGraph bipartition(
   }
 
   return p_graph;
+}
+
+void extend_partition_recursive(
+    const Graph &graph,
+    StaticArray<BlockID> &partition,
+    StaticArray<BlockID> &partition_remapping,
+    const BlockID b0,
+    const BlockID local_b,
+    const BlockID k,
+    const BlockID final_k,
+    const Context &input_ctx,
+    InitialBipartitionerWorkerPool &bipartitioner_pool
+) {
+  PartitionedGraph p_graph =
+      bipartition(&graph, final_k, input_ctx, bipartitioner_pool, false, nullptr);
+
+  std::array<BlockID, 2> final_ks{0, 0};
+  std::array<BlockID, 2> ks{0, 0};
+  std::tie(final_ks[0], final_ks[1]) = math::split_integral(final_k);
+  std::tie(ks[0], ks[1]) = math::split_integral(k);
+  std::array<BlockID, 2> b{b0, b0 + ks[0]};
+
+  DBG << "bipartitioning graph with weight " << graph.total_node_weight() << " = "
+      << p_graph.block_weight(0) << " + " << p_graph.block_weight(1) << " for final k " << final_k
+      << " = " << final_ks[0] << " + " << final_ks[1] << ", for total of " << k << " = " << ks[0]
+      << " + " << ks[1] << " blocks";
+
+  const auto copy_partition = [&] {
+    graph.block_induced_reified([&](const auto &graph) {
+      const auto &local_to_global = graph.local_to_global();
+      for (const NodeID u : graph.nodes()) {
+        partition[local_to_global[u]] = local_b + p_graph.block(u);
+      }
+    });
+  };
+
+  if (k <= 2) {
+    copy_partition();
+    partition_remapping[local_b] = 1;
+    partition_remapping[local_b + 1] = 1;
+    return;
+  }
+
+  auto [subgraphs] = graph::extract_span_subgraphs_sequential(p_graph, final_ks, local_b);
+  copy_partition();
+
+  for (const std::size_t i : {0, 1}) {
+    if (ks[i] <= 1) {
+      continue;
+    }
+
+    extend_partition_recursive(
+        subgraphs[i],
+        partition,
+        partition_remapping,
+        b[i],
+        local_b + (i == 0 ? 2 : 2 * ks[0]),
+        ks[i],
+        final_ks[i],
+        input_ctx,
+        bipartitioner_pool
+    );
+  }
 }
 
 void extend_partition_recursive(
@@ -192,6 +239,109 @@ void extend_partition_recursive(
   }
 }
 
+void extend_partition(
+    PartitionedGraph &p_graph,
+    BlockID k_prime,
+    const Context &input_ctx,
+    PartitionContext &current_p_ctx,
+    InitialBipartitionerWorkerPool &bipartitioner_pool,
+    int num_active_threads
+) {
+  if (input_ctx.partitioning.min_consecutive_seq_bipartitioning_levels > 0) {
+    // See below for details about the following recursive call.
+    const int factor = 2 << (input_ctx.partitioning.min_consecutive_seq_bipartitioning_levels - 1);
+    while (k_prime > factor * p_graph.k() && num_active_threads > p_graph.k()) {
+      extend_partition(
+          p_graph,
+          factor * p_graph.k(),
+          input_ctx,
+          current_p_ctx,
+          bipartitioner_pool,
+          num_active_threads
+      );
+    }
+  }
+
+  SCOPED_TIMER("Initial partitioning");
+
+  const BlockID k = p_graph.k();
+  auto [subgraphs, mapping] = graph::extract_span_subgraphs(p_graph, input_ctx.partition.k);
+
+  START_HEAP_PROFILER("Compute local block indices");
+  START_TIMER("Compute local block indices");
+  StaticArray<BlockID> local_block_indices(k + 1);
+  tbb::parallel_for<BlockID>(0, subgraphs.size(), [&](const BlockID b) {
+    const BlockID final_kb = compute_final_k(b, k, input_ctx.partition.k);
+    const BlockID subgraph_k = (k_prime == input_ctx.partition.k) ? final_kb : k_prime / k;
+    local_block_indices[b + 1] = subgraph_k == 1 ? 1 : 2 * (subgraph_k - 1);
+  });
+
+  local_block_indices.front() = k;
+  parallel::prefix_sum(
+      local_block_indices.begin(), local_block_indices.end(), local_block_indices.begin()
+  );
+  STOP_TIMER();
+  STOP_HEAP_PROFILER();
+
+  START_HEAP_PROFILER("Allocation");
+  START_TIMER("Allocation");
+  StaticArray<BlockID> partition = p_graph.take_raw_partition();
+  StaticArray<BlockID> partition_remapping(local_block_indices.back());
+
+  ScalableVector<StaticArray<BlockID>> subgraph_partitions;
+  for (const auto &subgraph : subgraphs) {
+    subgraph_partitions.emplace_back(subgraph.n());
+  }
+  STOP_TIMER();
+  STOP_HEAP_PROFILER();
+
+  TIMED_SCOPE("Bipartitioning") {
+    SCOPED_HEAP_PROFILER("Bipartitioning");
+
+    tbb::parallel_for<BlockID>(0, k, [&](const BlockID b) {
+      const auto &subgraph = subgraphs[b];
+      const BlockID final_kb = compute_final_k(b, k, input_ctx.partition.k);
+      const BlockID subgraph_k = (k_prime == input_ctx.partition.k) ? final_kb : k_prime / k;
+
+      if (subgraph_k == 1) {
+        partition_remapping[local_block_indices[b]] = 1;
+        return;
+      }
+
+      DBG << "initial extend_partition_recursive() for block " << b << ", final k " << final_kb
+          << ", subgraph k " << subgraph_k << ", weight " << p_graph.block_weight(b) << " /// "
+          << subgraph.total_node_weight();
+
+      extend_partition_recursive(
+          subgraph,
+          partition,
+          partition_remapping,
+          0,
+          local_block_indices[b],
+          subgraph_k,
+          final_kb,
+          input_ctx,
+          bipartitioner_pool
+      );
+    });
+  };
+
+  TIMED_SCOPE("Copy subgraph partitions") {
+    SCOPED_HEAP_PROFILER("Copy subgraph partitions");
+
+    parallel::prefix_sum(
+        partition_remapping.begin(), partition_remapping.end(), partition_remapping.begin()
+    );
+
+    p_graph.pfor_nodes([&](const NodeID u) {
+      const BlockID b = partition[u];
+      partition[u] = partition_remapping[b < p_graph.k() ? local_block_indices[b] : b] - 1;
+    });
+    p_graph = PartitionedGraph(p_graph.graph(), k_prime, std::move(partition));
+  };
+
+  update_partition_context(current_p_ctx, p_graph, input_ctx.partition.k);
+}
 void extend_partition(
     PartitionedGraph &p_graph, // stores current k
     const BlockID k_prime,     // extend to this many blocks

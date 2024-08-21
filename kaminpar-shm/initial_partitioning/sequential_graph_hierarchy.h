@@ -26,13 +26,13 @@ public:
   SequentialGraphHierarchy(SequentialGraphHierarchy &&) noexcept = default;
   SequentialGraphHierarchy &operator=(SequentialGraphHierarchy &&) noexcept = default;
 
-  void init(const CSRGraph &graph);
+  void init(const Graph &graph);
 
-  void push(CSRGraph &&c_graph, StaticArray<NodeID> &&c_mapping);
+  void push(Graph &&c_graph, StaticArray<NodeID> &&c_mapping);
 
-  [[nodiscard]] const CSRGraph &current() const;
+  [[nodiscard]] const Graph &current() const;
 
-  PartitionedCSRGraph pop(PartitionedCSRGraph &&coarse_p_graph);
+  PartitionedGraph pop(PartitionedGraph &&coarse_p_graph);
 
   [[nodiscard]] inline std::size_t level() const {
     return _coarse_graphs.size();
@@ -47,16 +47,16 @@ public:
   CSRGraphMemory alloc_graph_memory();
 
 private:
-  [[nodiscard]] const CSRGraph &get_second_coarsest_graph() const;
+  [[nodiscard]] const Graph &get_second_coarsest_graph() const;
 
   void recover_partition_memory(StaticArray<BlockID> partition);
   void recover_mapping_memory(StaticArray<NodeID> mapping);
   void recover_graph_memory(CSRGraph graph);
 
-  const CSRGraph *_finest_graph;
+  const Graph *_finest_graph;
 
   ScalableVector<StaticArray<NodeID>> _coarse_mappings;
-  ScalableVector<CSRGraph> _coarse_graphs;
+  ScalableVector<Graph> _coarse_graphs;
 
   ScalableVector<CSRGraphMemory> _graph_memory_cache;
   ScalableVector<StaticArray<NodeID>> _mapping_memory_cache;

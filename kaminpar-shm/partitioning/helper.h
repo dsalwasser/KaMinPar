@@ -68,12 +68,26 @@ void refine(Refiner *refiner, PartitionedGraph &p_graph, const PartitionContext 
 void extend_partition_recursive(
     const Graph &graph,
     StaticArray<BlockID> &partition,
-    BlockID b0,
-    BlockID k,
-    BlockID final_k,
+    StaticArray<BlockID> &partition_remapping,
+    const BlockID b0,
+    const BlockID local_b,
+    const BlockID k,
+    const BlockID final_k,
+    const Context &input_ctx,
+    InitialBipartitionerWorkerPool &bipartitioner_pool
+);
+
+void extend_partition_recursive(
+    const Graph &graph,
+    StaticArray<BlockID> &partition,
+    const BlockID b0,
+    const BlockID local_b,
+    StaticArray<BlockID> &partition_remapping,
+    const BlockID k,
+    const BlockID final_k,
     const Context &input_ctx,
     graph::SubgraphMemory &subgraph_memory,
-    graph::SubgraphMemoryStartPosition position,
+    const graph::SubgraphMemoryStartPosition position,
     TemporarySubgraphMemoryEts &tmp_extraction_mem_pool_ets,
     InitialBipartitionerWorkerPool &bipartitioner_pool,
     BipartitionTimingInfo *timings = nullptr
@@ -84,7 +98,8 @@ void extend_partition(
     BlockID k_prime,
     const Context &input_ctx,
     PartitionContext &current_p_ctx,
-    InitialBipartitionerWorkerPool &bipartitioner_pool
+    InitialBipartitionerWorkerPool &bipartitioner_pool,
+    int num_active_threads
 );
 
 void extend_partition(

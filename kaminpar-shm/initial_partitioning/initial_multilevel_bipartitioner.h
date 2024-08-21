@@ -57,15 +57,15 @@ class InitialMultilevelBipartitioner {
 public:
   explicit InitialMultilevelBipartitioner(const Context &ctx);
 
-  void init(const CSRGraph &graph, BlockID final_k);
+  void init(const Graph &graph, BlockID final_k);
 
-  PartitionedCSRGraph partition(InitialPartitionerTimings *timings = nullptr);
+  PartitionedGraph partition(InitialPartitionerTimings *timings = nullptr);
 
 private:
-  const CSRGraph *coarsen(InitialPartitionerTimings *timings);
-  PartitionedCSRGraph uncoarsen(PartitionedCSRGraph p_graph);
+  const Graph *coarsen(InitialPartitionerTimings *timings);
+  PartitionedGraph uncoarsen(PartitionedGraph p_graph);
 
-  const CSRGraph *_graph;
+  const Graph *_graph;
   PartitionContext _p_ctx;
 
   const Context &_ctx;

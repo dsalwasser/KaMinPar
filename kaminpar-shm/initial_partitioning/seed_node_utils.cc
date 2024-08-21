@@ -7,17 +7,13 @@
  ******************************************************************************/
 #include "kaminpar-shm/initial_partitioning/seed_node_utils.h"
 
-#include "kaminpar-shm/kaminpar.h"
-
 #include "kaminpar-common/assert.h"
-#include "kaminpar-common/datastructures/marker.h"
-#include "kaminpar-common/datastructures/queue.h"
 #include "kaminpar-common/random.h"
 
 namespace kaminpar::shm {
 namespace {
 std::pair<NodeID, NodeID> find_furthest_away_node(
-    const CSRGraph &graph, const NodeID start_node, Queue<NodeID> &queue, Marker<> &marker
+    const Graph &graph, const NodeID start_node, Queue<NodeID> &queue, Marker<> &marker
 ) {
   queue.push_tail(start_node);
   marker.set<true>(start_node);
@@ -66,7 +62,7 @@ std::pair<NodeID, NodeID> find_furthest_away_node(
 }
 } // namespace
 
-std::pair<NodeID, NodeID> find_far_away_nodes(const CSRGraph &graph, const int num_iterations) {
+std::pair<NodeID, NodeID> find_far_away_nodes(const Graph &graph, const int num_iterations) {
   Queue<NodeID> queue(graph.n());
   Marker<> marker(graph.n());
 
@@ -74,7 +70,7 @@ std::pair<NodeID, NodeID> find_far_away_nodes(const CSRGraph &graph, const int n
 }
 
 std::pair<NodeID, NodeID> find_far_away_nodes(
-    const CSRGraph &graph, int num_iterations, Queue<NodeID> &queue, Marker<> &marker
+    const Graph &graph, int num_iterations, Queue<NodeID> &queue, Marker<> &marker
 ) {
   queue.clear();
   marker.reset();

@@ -9,14 +9,11 @@
 
 #include <algorithm>
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
-#include "kaminpar-shm/kaminpar.h"
-
 #include "kaminpar-common/assert.h"
 #include "kaminpar-common/random.h"
 
 namespace kaminpar::shm {
-void InitialGGGBipartitioner::init(const CSRGraph &graph, const PartitionContext &p_ctx) {
+void InitialGGGBipartitioner::init(const Graph &graph, const PartitionContext &p_ctx) {
   InitialFlatBipartitioner::init(graph, p_ctx);
 
   if (_queue.capacity() < _graph->n()) {

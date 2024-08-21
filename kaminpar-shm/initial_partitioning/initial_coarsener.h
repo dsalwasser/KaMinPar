@@ -9,7 +9,7 @@
 
 #include <utility>
 
-#include "kaminpar-shm/datastructures/csr_graph.h"
+#include "kaminpar-shm/datastructures/graph.h"
 #include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/initial_partitioning/sequential_graph_hierarchy.h"
 #include "kaminpar-shm/kaminpar.h"
@@ -43,7 +43,7 @@ class InitialCoarsener {
   static constexpr std::size_t kChunkSize = 256;
   static constexpr std::size_t kNumberOfNodePermutations = 16;
 
-  using ContractionResult = std::pair<CSRGraph, StaticArray<NodeID>>;
+  using ContractionResult = std::pair<Graph, StaticArray<NodeID>>;
 
 public:
   struct Cluster {
@@ -73,20 +73,20 @@ public:
     return _hierarchy.empty();
   }
 
-  [[nodiscard]] inline const CSRGraph *current() const {
+  [[nodiscard]] inline const Graph *current() const {
     return &_hierarchy.current();
   }
 
-  void init(const CSRGraph &graph);
+  void init(const Graph &graph);
 
-  const CSRGraph *coarsen(NodeWeight max_cluster_weight);
+  const Graph *coarsen(NodeWeight max_cluster_weight);
 
-  PartitionedCSRGraph uncoarsen(PartitionedCSRGraph &&c_p_graph);
+  PartitionedGraph uncoarsen(PartitionedGraph &&c_p_graph);
 
   void reset_current_clustering();
 
   template <typename Weights>
-  void reset_current_clustering(const NodeID n, const Weights &node_weights) {
+  void reset_current_clustering(const NodeID n, Weights &&node_weights) {
     KASSERT(n <= _clustering.size());
     KASSERT(n <= node_weights.size());
 
@@ -94,7 +94,7 @@ public:
     for (NodeID u = 0; u < n; ++u) {
       _clustering[u].locked = false;
       _clustering[u].leader = u;
-      _clustering[u].weight = node_weights[u];
+      _clustering[u].weight = node_weights(u);
     }
   }
 
@@ -119,8 +119,8 @@ private:
 
   void interleaved_visit_neighbor(NodeID, NodeID c_v, EdgeWeight weight);
 
-  const CSRGraph *_input_graph;
-  const CSRGraph *_current_graph;
+  const Graph *_input_graph;
+  const Graph *_current_graph;
   SequentialGraphHierarchy _hierarchy;
 
   const InitialCoarseningContext &_c_ctx;
