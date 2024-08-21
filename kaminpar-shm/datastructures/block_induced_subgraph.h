@@ -17,6 +17,52 @@
 
 namespace kaminpar::shm {
 
+class LocalToGlobalMapping {
+public:
+  LocalToGlobalMapping(
+      const bool use_shared,
+      const NodeID offset,
+      NodeID *shared_local_to_global,
+      NodeID *backup_local_to_global
+  )
+      : _use_shared(use_shared),
+        _offset(offset),
+        _local_to_global((use_shared ? shared_local_to_global : backup_local_to_global) + offset),
+        _shared_local_to_global(shared_local_to_global),
+        _backup_local_to_global(backup_local_to_global) {}
+
+  [[nodiscard]] bool use_shared() const {
+    return _use_shared;
+  }
+
+  [[nodiscard]] std::size_t offset() const {
+    return _offset;
+  }
+
+  [[nodiscard]] const NodeID &operator[](const NodeID u_local) const {
+    return _local_to_global[u_local];
+  }
+
+  NodeID &operator[](const NodeID u_local) {
+    return _local_to_global[u_local];
+  }
+
+  [[nodiscard]] NodeID *shared() const {
+    return _shared_local_to_global;
+  }
+
+  [[nodiscard]] NodeID *backup() const {
+    return _backup_local_to_global;
+  }
+
+private:
+  bool _use_shared;
+  NodeID _offset;
+  NodeID *_local_to_global;
+  NodeID *_shared_local_to_global;
+  NodeID *_backup_local_to_global;
+};
+
 template <typename Graph> class BlockInducedSubgraph : public AbstractGraph {
 public:
   using NodeID = Graph::NodeID;
@@ -33,7 +79,7 @@ public:
       const EdgeWeight total_edge_weight,
       const BlockID block,
       StaticArray<std::pair<NodeID, BlockID>> global_to_local,
-      StaticArray<NodeID> local_to_global
+      LocalToGlobalMapping local_to_global
   )
       : _graph(graph),
         _num_nodes(num_nodes),
@@ -276,11 +322,11 @@ public:
     return _global_to_local;
   }
 
-  [[nodiscard]] const StaticArray<NodeID> &local_to_global() const {
+  [[nodiscard]] const LocalToGlobalMapping &local_to_global() const {
     return _local_to_global;
   }
 
-  [[nodiscard]] StaticArray<NodeID> &local_to_global() {
+  [[nodiscard]] LocalToGlobalMapping &local_to_global() {
     return _local_to_global;
   }
 
@@ -295,7 +341,7 @@ private:
   const EdgeWeight _total_edge_weight;
 
   StaticArray<std::pair<NodeID, BlockID>> _global_to_local;
-  StaticArray<NodeID> _local_to_global;
+  LocalToGlobalMapping _local_to_global;
 };
 
 } // namespace kaminpar::shm

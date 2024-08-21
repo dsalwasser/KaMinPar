@@ -266,7 +266,11 @@ void extend_partition(
   SCOPED_TIMER("Initial partitioning");
 
   const BlockID k = p_graph.k();
-  auto [subgraphs, mapping] = graph::extract_span_subgraphs(p_graph, input_ctx.partition.k);
+  auto [subgraphs, mapping, _] = graph::extract_span_subgraphs(
+      p_graph,
+      input_ctx.partition.k,
+      p_graph.raw_partition().data() // used the partition as a secondary buffer
+  );
 
   START_HEAP_PROFILER("Compute local block indices");
   START_TIMER("Compute local block indices");
@@ -284,13 +288,7 @@ void extend_partition(
   STOP_TIMER();
   STOP_HEAP_PROFILER();
 
-  START_HEAP_PROFILER("Allocation");
-  START_TIMER("Allocation");
-  StaticArray<BlockID> partition = p_graph.take_raw_partition();
   StaticArray<BlockID> partition_remapping(local_block_indices.back());
-  STOP_TIMER();
-  STOP_HEAP_PROFILER();
-
   TIMED_SCOPE("Bipartitioning") {
     SCOPED_HEAP_PROFILER("Bipartitioning");
 
@@ -324,6 +322,7 @@ void extend_partition(
   TIMED_SCOPE("Copy subgraph partitions") {
     SCOPED_HEAP_PROFILER("Copy subgraph partitions");
 
+    StaticArray<BlockID> partition = p_graph.take_raw_partition();
     parallel::prefix_sum(
         partition_remapping.begin(), partition_remapping.end(), partition_remapping.begin()
     );
