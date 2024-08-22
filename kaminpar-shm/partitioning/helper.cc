@@ -93,6 +93,7 @@ PartitionedGraph bipartition(
 
 void extend_partition_recursive(
     Graph &graph,
+    StaticArray<BlockID> &partition,
     StaticArray<BlockID> &partition_remapping,
     const BlockID b0,
     const BlockID local_b,
@@ -118,10 +119,8 @@ void extend_partition_recursive(
   const auto copy_partition = [&] {
     graph.block_induced_reified([&](auto &graph) {
       const auto &local_to_global = graph.local_to_global();
-      auto &global_to_local = graph.global_to_local();
-
       for (const NodeID u : graph.nodes()) {
-        global_to_local[local_to_global[u]].second = local_b + p_graph.block(u);
+        partition[local_to_global[u]] = local_b + p_graph.block(u);
       }
     });
   };
@@ -144,6 +143,7 @@ void extend_partition_recursive(
 
     extend_partition_recursive(
         subgraphs[i],
+        partition,
         partition_remapping,
         b[i],
         local_b + (i == 0 ? 2 : 2 * ks[0]),
@@ -264,18 +264,17 @@ void extend_partition(
   }
 
   SCOPED_TIMER("Initial partitioning");
-
+  const BlockID n = p_graph.n();
   const BlockID k = p_graph.k();
-  auto [subgraphs, mapping, _] = graph::extract_span_subgraphs(
-      p_graph,
-      input_ctx.partition.k,
-      p_graph.raw_partition().data() // used the partition as a secondary buffer
-  );
+
+  StaticArray<NodeID> secondary_buffer(n, static_array::noinit);
+  auto [subgraphs, global_to_local, shared_local_to_global] =
+      graph::extract_span_subgraphs(p_graph, input_ctx.partition.k, secondary_buffer.data());
 
   START_HEAP_PROFILER("Compute local block indices");
   START_TIMER("Compute local block indices");
   StaticArray<BlockID> local_block_indices(k + 1);
-  tbb::parallel_for<BlockID>(0, subgraphs.size(), [&](const BlockID b) {
+  tbb::parallel_for<BlockID>(0, k, [&](const BlockID b) {
     const BlockID final_kb = compute_final_k(b, k, input_ctx.partition.k);
     const BlockID subgraph_k = (k_prime == input_ctx.partition.k) ? final_kb : k_prime / k;
     local_block_indices[b + 1] = subgraph_k == 1 ? 1 : 2 * (subgraph_k - 1);
@@ -288,6 +287,7 @@ void extend_partition(
   STOP_TIMER();
   STOP_HEAP_PROFILER();
 
+  StaticArray<BlockID> partition = p_graph.take_raw_partition();
   StaticArray<BlockID> partition_remapping(local_block_indices.back());
   TIMED_SCOPE("Bipartitioning") {
     SCOPED_HEAP_PROFILER("Bipartitioning");
@@ -308,6 +308,7 @@ void extend_partition(
 
       extend_partition_recursive(
           subgraph,
+          partition,
           partition_remapping,
           0,
           local_block_indices[b],
@@ -322,15 +323,20 @@ void extend_partition(
   TIMED_SCOPE("Copy subgraph partitions") {
     SCOPED_HEAP_PROFILER("Copy subgraph partitions");
 
-    StaticArray<BlockID> partition = p_graph.take_raw_partition();
     parallel::prefix_sum(
         partition_remapping.begin(), partition_remapping.end(), partition_remapping.begin()
     );
 
-    p_graph.pfor_nodes([&](const NodeID u) {
-      const BlockID b = mapping[u].second;
-      partition[u] = partition_remapping[b < p_graph.k() ? local_block_indices[b] : b] - 1;
+    tbb::parallel_for(tbb::blocked_range<NodeID>(0, n), [&](const auto &local_nodes) {
+      const NodeID first_node = local_nodes.begin();
+      const NodeID last_node = local_nodes.end();
+
+      for (NodeID u = first_node; u < last_node; ++u) {
+        const BlockID b = partition[u];
+        partition[u] = partition_remapping[b < k ? local_block_indices[b] : b] - 1;
+      }
     });
+
     p_graph = PartitionedGraph(p_graph.graph(), k_prime, std::move(partition));
   };
 

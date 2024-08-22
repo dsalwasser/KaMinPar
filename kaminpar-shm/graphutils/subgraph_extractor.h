@@ -105,7 +105,7 @@ struct SubgraphMemory {
 
 struct SpanSubgraphExtractionResult {
   ScalableVector<Graph> subgraphs;
-  StaticArray<std::pair<NodeID, BlockID>> global_to_local;
+  StaticArray<NodeID> global_to_local;
   StaticArray<NodeID> local_to_global;
 };
 

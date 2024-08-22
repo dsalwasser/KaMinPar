@@ -67,6 +67,7 @@ void refine(Refiner *refiner, PartitionedGraph &p_graph, const PartitionContext 
 
 void extend_partition_recursive(
     Graph &graph,
+    StaticArray<BlockID> &partition,
     StaticArray<BlockID> &partition_remapping,
     const BlockID b0,
     const BlockID local_b,

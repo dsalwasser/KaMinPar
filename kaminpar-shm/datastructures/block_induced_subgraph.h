@@ -72,16 +72,18 @@ public:
 
   BlockInducedSubgraph(
       const Graph *graph,
+      StaticArray<BlockID> partition,
       const NodeID num_nodes,
       const EdgeID num_edges,
       const NodeWeight max_node_weight,
       const NodeWeight total_node_weight,
       const EdgeWeight total_edge_weight,
       const BlockID block,
-      StaticArray<std::pair<NodeID, BlockID>> global_to_local,
+      StaticArray<NodeID> global_to_local,
       LocalToGlobalMapping local_to_global
   )
       : _graph(graph),
+        _partition(std::move(partition)),
         _num_nodes(num_nodes),
         _num_edges(num_edges),
         _max_node_weight(max_node_weight),
@@ -90,6 +92,7 @@ public:
         _block(block),
         _global_to_local(std::move(global_to_local)),
         _local_to_global(std::move(local_to_global)) {
+    KASSERT(partition.is_span());
     KASSERT(global_to_local.is_span());
   }
 
@@ -207,7 +210,7 @@ public:
     const NodeID u_global = _local_to_global[u];
     if constexpr (kDecodeEdgeWeights) {
       _graph->adjacent_nodes(u_global, [&](const NodeID v, const EdgeWeight w) {
-        const auto [v_local, v_block] = _global_to_local[v];
+        const BlockID v_block = _partition[v];
         if (v_block != _block) {
           if constexpr (kNonStoppable) {
             return;
@@ -216,11 +219,12 @@ public:
           }
         }
 
+        const NodeID v_local = _global_to_local[v];
         return l(v_local, w);
       });
     } else {
       _graph->adjacent_nodes(u_global, [&](const NodeID v) {
-        const auto [v_local, v_block] = _global_to_local[v];
+        const BlockID v_block = _partition[v];
         if (v_block != _block) {
           if constexpr (kNonStoppable) {
             return;
@@ -229,6 +233,7 @@ public:
           }
         }
 
+        const NodeID v_local = _global_to_local[v];
         return l(v_local);
       });
     }
@@ -314,11 +319,15 @@ public:
     return _graph;
   }
 
-  [[nodiscard]] const StaticArray<std::pair<NodeID, BlockID>> &global_to_local() const {
+  [[nodiscard]] StaticArray<BlockID> partition() {
+    return StaticArray<BlockID>(_partition.size(), _partition.data());
+  }
+
+  [[nodiscard]] const StaticArray<NodeID> &global_to_local() const {
     return _global_to_local;
   }
 
-  [[nodiscard]] StaticArray<std::pair<NodeID, BlockID>> &global_to_local() {
+  [[nodiscard]] StaticArray<NodeID> &global_to_local() {
     return _global_to_local;
   }
 
@@ -332,6 +341,7 @@ public:
 
 private:
   const Graph *_graph;
+  StaticArray<BlockID> _partition;
 
   const BlockID _block;
   const NodeID _num_nodes;
@@ -340,7 +350,7 @@ private:
   const NodeWeight _total_node_weight;
   const EdgeWeight _total_edge_weight;
 
-  StaticArray<std::pair<NodeID, BlockID>> _global_to_local;
+  StaticArray<NodeID> _global_to_local;
   LocalToGlobalMapping _local_to_global;
 };
 
