@@ -73,20 +73,29 @@ struct SubgraphMemory {
       const bool is_node_weighted = true,
       const bool is_edge_weighted = true
   ) {
+    resize(n, k, m, is_node_weighted ? n : 0, is_edge_weighted ? m : 0);
+  }
+
+  void resize(
+      const NodeID n,
+      const BlockID k,
+      const EdgeID m,
+      const NodeID n_weights,
+      const EdgeID m_weights
+  ) {
     SCOPED_HEAP_PROFILER("SubgraphMemory resize");
     SCOPED_TIMER("Allocation");
 
     nodes.resize(n + k);
     edges.resize(m);
-    node_weights.resize(is_node_weighted * (n + k));
-    edge_weights.resize(is_edge_weighted * m);
+    node_weights.resize((n_weights == 0) ? 0 : (n_weights + k));
+    edge_weights.resize(m_weights);
 
     IF_HEAP_PROFILING(
         _struct->size = std::max(
             _struct->size,
-            (n + k) * sizeof(EdgeID) + m * sizeof(NodeID) +
-                is_node_weighted * (n + k) * sizeof(NodeWeight) +
-                is_edge_weighted * m * sizeof(EdgeWeight)
+            nodes.size() * sizeof(EdgeID) + edges.size() * sizeof(NodeID) +
+                node_weights.size() * sizeof(NodeWeight) + edge_weights.size() * sizeof(EdgeWeight)
         )
     );
   }

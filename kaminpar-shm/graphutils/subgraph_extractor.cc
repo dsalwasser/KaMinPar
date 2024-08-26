@@ -342,8 +342,8 @@ SubgraphExtractionResult extract_subgraphs_generic_graph(
   });
   STOP_TIMER();
 
-  const bool is_node_weighted = p_graph.graph().is_node_weighted();
-  const bool is_edge_weighted = p_graph.graph().is_edge_weighted();
+  const bool is_node_weighted = graph.is_node_weighted();
+  const bool is_edge_weighted = graph.is_edge_weighted();
 
   // build graph
   START_TIMER("Construct subgraphs");
