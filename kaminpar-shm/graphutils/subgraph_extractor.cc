@@ -189,9 +189,9 @@ SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential_generic
 ) {
   KASSERT(p_graph.k() == 2u, "Only suitable for bipartitions!", assert::light);
 
-  using GlobalToLocalMapping = StaticArray<NodeID>;
-  GlobalToLocalMapping &global_to_local = graph.global_to_local();
+  StaticArray<NodeID> &global_to_local = graph.global_to_local();
   LocalToGlobalMapping &local_to_global = graph.local_to_global();
+  StaticArray<std::uint8_t> &border_nodes = graph.border_nodes();
 
   std::array<NodeID, 2> s_n{0, 0};
   std::array<EdgeID, 2> s_m{0, 0};
@@ -208,14 +208,20 @@ SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential_generic
     s_max_node_weight[b] = std::max(s_max_node_weight[b], u_weight);
     s_total_node_weight[b] += u_weight;
 
+    const NodeID u_global = local_to_global[u];
+    std::uint8_t is_border_node = border_nodes[u_global];
+
     graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight w) {
       if (p_graph.block(v) != b) {
+        is_border_node = 1;
         return;
       }
 
       s_m[b] += 1;
       s_total_edge_weight[b] += w;
     });
+
+    border_nodes[u_global] = is_border_node;
   }
 
   const auto construct_local_to_global_mapping = [&](const BlockID b) {
@@ -249,8 +255,9 @@ SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential_generic
         s_total_node_weight[b],
         s_total_edge_weight[b],
         b_test + b,
-        GlobalToLocalMapping(global_to_local.size(), global_to_local.data()),
-        std::move(s_local_to_global[b])
+        StaticArray<NodeID>(global_to_local.size(), global_to_local.data()),
+        std::move(s_local_to_global[b]),
+        StaticArray<std::uint8_t>(border_nodes.size(), border_nodes.data())
     ));
   };
   std::array<shm::Graph, 2> subgraphs{create_graph(0), create_graph(1)};
@@ -437,7 +444,9 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
   SCOPED_TIMER("Extract subgraphs");
   SCOPED_HEAP_PROFILER("Extract subgraphs");
 
+  const NodeID num_nodes = p_graph.n();
   const NodeID num_blocks = p_graph.k();
+  StaticArray<std::uint8_t> border_nodes(num_nodes, static_array::noinit);
 
   std::vector<NodeID> local_num_nodes(num_blocks);
   std::vector<EdgeID> local_num_edges(num_blocks);
@@ -461,7 +470,7 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
       return ScalableVector<EdgeWeight>(num_blocks);
     }};
 
-    tbb::parallel_for(tbb::blocked_range<NodeID>(0, graph.n()), [&](auto &local_nodes) {
+    tbb::parallel_for(tbb::blocked_range<NodeID>(0, num_nodes), [&](auto &local_nodes) {
       auto &local_num_nodes = local_num_nodes_ets.local();
       auto &local_num_edges = local_num_edges_ets.local();
       auto &local_max_node_weight = local_max_node_weight_ets.local();
@@ -478,14 +487,18 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
         local_total_node_weight[u_block] += u_weight;
         local_max_node_weight[u_block] = std::max(local_max_node_weight[u_block], u_weight);
 
+        std::uint8_t is_border_node = 0;
         graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight w) {
           if (p_graph.block(v) != u_block) {
+            is_border_node = 1;
             return;
           }
 
           local_num_edges[u_block] += 1;
           local_total_edge_weight[u_block] += w;
         });
+
+        border_nodes[u] = is_border_node;
       }
     });
 
@@ -522,18 +535,17 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
     });
   };
 
-  using GlobalToLocalMapping = StaticArray<NodeID>;
-  GlobalToLocalMapping global_to_local(graph.n(), static_array::noinit);
-
-  StaticArray<NodeID> shared_local_to_global(graph.n(), static_array::noinit);
+  StaticArray<NodeID> global_to_local(num_nodes, static_array::noinit);
+  StaticArray<NodeID> shared_local_to_global(num_nodes, static_array::noinit);
   StaticArray<NodeID> local_to_global_offsets(num_blocks);
-  parallel::prefix_sum(
-      local_num_nodes.begin(), local_num_nodes.end() - 1, local_to_global_offsets.begin() + 1
-  );
 
   TIMED_SCOPE("Fill mappings") {
+    parallel::prefix_sum(
+        local_num_nodes.begin(), local_num_nodes.end() - 1, local_to_global_offsets.begin() + 1
+    );
+
     std::vector<NodeID> local_to_global_size(num_blocks);
-    tbb::parallel_for(tbb::blocked_range<NodeID>(0, graph.n()), [&](auto &local_nodes) {
+    tbb::parallel_for(tbb::blocked_range<NodeID>(0, num_nodes), [&](auto &local_nodes) {
       const NodeID first_local_node = local_nodes.begin();
       const NodeID last_local_node = local_nodes.end();
 
@@ -560,18 +572,24 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
           local_total_node_weight[b],
           local_total_edge_weight[b],
           b,
-          GlobalToLocalMapping(global_to_local.size(), global_to_local.data()),
+          StaticArray<NodeID>(global_to_local.size(), global_to_local.data()),
           LocalToGlobalMapping(
               true,
               local_to_global_offsets[b],
               shared_local_to_global.data(),
               backup_local_to_global
-          )
+          ),
+          StaticArray<std::uint8_t>(border_nodes.size(), border_nodes.data())
       ));
     });
   };
 
-  return {std::move(subgraphs), std::move(global_to_local), std::move(shared_local_to_global)};
+  return {
+      std::move(subgraphs),
+      std::move(global_to_local),
+      std::move(shared_local_to_global),
+      std::move(border_nodes)
+  };
 }
 } // namespace
 

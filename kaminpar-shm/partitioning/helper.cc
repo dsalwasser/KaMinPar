@@ -268,7 +268,7 @@ void extend_partition(
   const BlockID k = p_graph.k();
 
   StaticArray<NodeID> secondary_buffer(n, static_array::noinit);
-  auto [subgraphs, global_to_local, shared_local_to_global] =
+  auto [subgraphs, global_to_local, shared_local_to_global, border_nodes] =
       graph::extract_span_subgraphs(p_graph, input_ctx.partition.k, secondary_buffer.data());
 
   START_HEAP_PROFILER("Compute local block indices");

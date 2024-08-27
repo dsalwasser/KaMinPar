@@ -80,7 +80,8 @@ public:
       const EdgeWeight total_edge_weight,
       const BlockID block,
       StaticArray<NodeID> global_to_local,
-      LocalToGlobalMapping local_to_global
+      LocalToGlobalMapping local_to_global,
+      StaticArray<std::uint8_t> border_nodes
   )
       : _graph(graph),
         _partition(std::move(partition)),
@@ -91,9 +92,11 @@ public:
         _total_edge_weight(total_edge_weight),
         _block(block),
         _global_to_local(std::move(global_to_local)),
-        _local_to_global(std::move(local_to_global)) {
-    KASSERT(partition.is_span());
-    KASSERT(global_to_local.is_span());
+        _local_to_global(std::move(local_to_global)),
+        _border_nodes(std::move(border_nodes)) {
+    KASSERT(_partition.is_span());
+    KASSERT(_global_to_local.is_span());
+    KASSERT(_border_nodes.is_span());
   }
 
   ~BlockInducedSubgraph() = default;
@@ -208,34 +211,49 @@ public:
     constexpr bool kNonStoppable = std::is_void_v<LambdaReturnType>;
 
     const NodeID u_global = _local_to_global[u];
+    const bool is_border_node = _border_nodes[u_global] == 1;
     if constexpr (kDecodeEdgeWeights) {
-      _graph->adjacent_nodes(u_global, [&](const NodeID v, const EdgeWeight w) {
-        const BlockID v_block = _partition[v];
-        if (v_block != _block) {
-          if constexpr (kNonStoppable) {
-            return;
-          } else {
-            return false;
+      if (is_border_node) {
+        _graph->adjacent_nodes(u_global, [&](const NodeID v, const EdgeWeight w) {
+          const BlockID v_block = _partition[v];
+          if (v_block != _block) {
+            if constexpr (kNonStoppable) {
+              return;
+            } else {
+              return false;
+            }
           }
-        }
 
-        const NodeID v_local = _global_to_local[v];
-        return l(v_local, w);
-      });
+          const NodeID v_local = _global_to_local[v];
+          return l(v_local, w);
+        });
+      } else {
+        _graph->adjacent_nodes(u_global, [&](const NodeID v, const EdgeWeight w) {
+          const NodeID v_local = _global_to_local[v];
+          return l(v_local, w);
+        });
+      }
     } else {
-      _graph->adjacent_nodes(u_global, [&](const NodeID v) {
-        const BlockID v_block = _partition[v];
-        if (v_block != _block) {
-          if constexpr (kNonStoppable) {
-            return;
-          } else {
-            return false;
+      if (is_border_node) {
+        _graph->adjacent_nodes(u_global, [&](const NodeID v) {
+          const BlockID v_block = _partition[v];
+          if (v_block != _block) {
+            if constexpr (kNonStoppable) {
+              return;
+            } else {
+              return false;
+            }
           }
-        }
 
-        const NodeID v_local = _global_to_local[v];
-        return l(v_local);
-      });
+          const NodeID v_local = _global_to_local[v];
+          return l(v_local);
+        });
+      } else {
+        _graph->adjacent_nodes(u_global, [&](const NodeID v) {
+          const NodeID v_local = _global_to_local[v];
+          return l(v_local);
+        });
+      }
     }
   }
 
@@ -339,6 +357,10 @@ public:
     return _local_to_global;
   }
 
+  [[nodiscard]] StaticArray<std::uint8_t> &border_nodes() {
+    return _border_nodes;
+  }
+
 private:
   const Graph *_graph;
   StaticArray<BlockID> _partition;
@@ -352,6 +374,7 @@ private:
 
   StaticArray<NodeID> _global_to_local;
   LocalToGlobalMapping _local_to_global;
+  StaticArray<std::uint8_t> _border_nodes;
 };
 
 } // namespace kaminpar::shm

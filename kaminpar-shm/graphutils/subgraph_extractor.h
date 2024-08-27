@@ -116,6 +116,7 @@ struct SpanSubgraphExtractionResult {
   ScalableVector<Graph> subgraphs;
   StaticArray<NodeID> global_to_local;
   StaticArray<NodeID> local_to_global;
+  StaticArray<std::uint8_t> border_nodes;
 };
 
 struct SubgraphExtractionResult {
