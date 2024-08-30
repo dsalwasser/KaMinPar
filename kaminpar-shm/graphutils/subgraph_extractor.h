@@ -114,7 +114,6 @@ struct SubgraphMemory {
 
 struct SpanSubgraphExtractionResult {
   ScalableVector<Graph> subgraphs;
-  StaticArray<NodeID> global_to_local;
   StaticArray<NodeID> local_to_global;
   StaticArray<std::uint8_t> border_nodes;
 };
@@ -178,8 +177,12 @@ struct TemporarySubgraphMemory {
   }
 };
 
-SpanSubgraphExtractionResult
-extract_span_subgraphs(PartitionedGraph &p_graph, BlockID input_k, NodeID *backup_local_to_global);
+SpanSubgraphExtractionResult extract_span_subgraphs(
+    PartitionedGraph &p_graph,
+    BlockID input_k,
+    tbb::enumerable_thread_specific<DynamicFlatMap<NodeID, NodeID, NodeID>> &global_to_local_ets,
+    NodeID *backup_local_to_global
+);
 
 SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential(
     PartitionedGraph &p_graph, const std::array<BlockID, 2> &final_ks, const BlockID b_test

@@ -8,6 +8,7 @@
 
 #include <array>
 
+#include <oneapi/tbb/enumerable_thread_specific.h>
 #include <tbb/enumerable_thread_specific.h>
 #include <tbb/parallel_for.h>
 
@@ -189,7 +190,6 @@ SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential_generic
 ) {
   KASSERT(p_graph.k() == 2u, "Only suitable for bipartitions!", assert::light);
 
-  StaticArray<NodeID> &global_to_local = graph.global_to_local();
   LocalToGlobalMapping &local_to_global = graph.local_to_global();
   StaticArray<std::uint8_t> &border_nodes = graph.border_nodes();
 
@@ -241,7 +241,6 @@ SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential_generic
     const BlockID b = p_graph.block(u);
     const NodeID u_local = s_i[b]++;
 
-    global_to_local[local_to_global[u]] = u_local;
     s_local_to_global[b][u_local] = local_to_global[u];
   }
 
@@ -255,7 +254,7 @@ SequentialSpanSubgraphExtractionResult extract_span_subgraphs_sequential_generic
         s_total_node_weight[b],
         s_total_edge_weight[b],
         b_test + b,
-        StaticArray<NodeID>(global_to_local.size(), global_to_local.data()),
+        graph.global_to_local_ets(),
         std::move(s_local_to_global[b]),
         StaticArray<std::uint8_t>(border_nodes.size(), border_nodes.data())
     ));
@@ -439,7 +438,11 @@ SubgraphExtractionResult extract_subgraphs(
 namespace {
 template <typename Graph>
 SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
-    PartitionedGraph &p_graph, const Graph &graph, BlockID input_k, NodeID *backup_local_to_global
+    PartitionedGraph &p_graph,
+    const Graph &graph,
+    BlockID input_k,
+    tbb::enumerable_thread_specific<DynamicFlatMap<NodeID, NodeID, NodeID>> &global_to_local_ets,
+    NodeID *backup_local_to_global
 ) {
   SCOPED_TIMER("Extract subgraphs");
   SCOPED_HEAP_PROFILER("Extract subgraphs");
@@ -535,7 +538,6 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
     });
   };
 
-  StaticArray<NodeID> global_to_local(num_nodes, static_array::noinit);
   StaticArray<NodeID> shared_local_to_global(num_nodes, static_array::noinit);
   StaticArray<NodeID> local_to_global_offsets(num_blocks);
 
@@ -554,7 +556,6 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
         const NodeID u_local =
             __atomic_fetch_add(&local_to_global_size[u_block], 1, __ATOMIC_RELAXED);
 
-        global_to_local[u] = u_local;
         shared_local_to_global[local_to_global_offsets[u_block] + u_local] = u;
       }
     });
@@ -572,7 +573,7 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
           local_total_node_weight[b],
           local_total_edge_weight[b],
           b,
-          StaticArray<NodeID>(global_to_local.size(), global_to_local.data()),
+          global_to_local_ets,
           LocalToGlobalMapping(
               true,
               local_to_global_offsets[b],
@@ -584,19 +585,20 @@ SpanSubgraphExtractionResult extract_span_subgraphs_generic_graph(
     });
   };
 
-  return {
-      std::move(subgraphs),
-      std::move(global_to_local),
-      std::move(shared_local_to_global),
-      std::move(border_nodes)
-  };
+  return {std::move(subgraphs), std::move(shared_local_to_global), std::move(border_nodes)};
 }
 } // namespace
 
-SpanSubgraphExtractionResult
-extract_span_subgraphs(PartitionedGraph &p_graph, BlockID input_k, NodeID *backup_local_to_global) {
+SpanSubgraphExtractionResult extract_span_subgraphs(
+    PartitionedGraph &p_graph,
+    BlockID input_k,
+    tbb::enumerable_thread_specific<DynamicFlatMap<NodeID, NodeID, NodeID>> &global_to_local_ets,
+    NodeID *backup_local_to_global
+) {
   return p_graph.reified([&](const auto &graph) {
-    return extract_span_subgraphs_generic_graph(p_graph, graph, input_k, backup_local_to_global);
+    return extract_span_subgraphs_generic_graph(
+        p_graph, graph, input_k, global_to_local_ets, backup_local_to_global
+    );
   });
 }
 

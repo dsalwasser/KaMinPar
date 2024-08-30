@@ -9,9 +9,12 @@
 
 #include <utility>
 
+#include <tbb/enumerable_thread_specific.h>
+
 #include "kaminpar-shm/datastructures/abstract_graph.h"
 #include "kaminpar-shm/kaminpar.h"
 
+#include "kaminpar-common/datastructures/dynamic_map.h"
 #include "kaminpar-common/datastructures/static_array.h"
 #include "kaminpar-common/ranges.h"
 
@@ -79,7 +82,7 @@ public:
       const NodeWeight total_node_weight,
       const EdgeWeight total_edge_weight,
       const BlockID block,
-      StaticArray<NodeID> global_to_local,
+      tbb::enumerable_thread_specific<DynamicFlatMap<NodeID, NodeID, NodeID>> &global_to_local_ets,
       LocalToGlobalMapping local_to_global,
       StaticArray<std::uint8_t> border_nodes
   )
@@ -91,11 +94,10 @@ public:
         _total_node_weight(total_node_weight),
         _total_edge_weight(total_edge_weight),
         _block(block),
-        _global_to_local(std::move(global_to_local)),
+        _global_to_local_ets(global_to_local_ets),
         _local_to_global(std::move(local_to_global)),
         _border_nodes(std::move(border_nodes)) {
     KASSERT(_partition.is_span());
-    KASSERT(_global_to_local.is_span());
     KASSERT(_border_nodes.is_span());
   }
 
@@ -224,12 +226,12 @@ public:
             }
           }
 
-          const NodeID v_local = _global_to_local[v];
+          const NodeID v_local = _global_to_local->get(v);
           return l(v_local, w);
         });
       } else {
         _graph->adjacent_nodes(u_global, [&](const NodeID v, const EdgeWeight w) {
-          const NodeID v_local = _global_to_local[v];
+          const NodeID v_local = _global_to_local->get(v);
           return l(v_local, w);
         });
       }
@@ -245,12 +247,12 @@ public:
             }
           }
 
-          const NodeID v_local = _global_to_local[v];
+          const NodeID v_local = _global_to_local->get(v);
           return l(v_local);
         });
       } else {
         _graph->adjacent_nodes(u_global, [&](const NodeID v) {
-          const NodeID v_local = _global_to_local[v];
+          const NodeID v_local = _global_to_local->get(v);
           return l(v_local);
         });
       }
@@ -341,12 +343,20 @@ public:
     return StaticArray<BlockID>(_partition.size(), _partition.data());
   }
 
-  [[nodiscard]] const StaticArray<NodeID> &global_to_local() const {
-    return _global_to_local;
+  [[nodiscard]] tbb::enumerable_thread_specific<DynamicFlatMap<NodeID, NodeID, NodeID>> &
+  global_to_local_ets() {
+    return _global_to_local_ets;
   }
 
-  [[nodiscard]] StaticArray<NodeID> &global_to_local() {
-    return _global_to_local;
+  void init_global_to_local() {
+    auto &global_to_local = _global_to_local_ets.local();
+    _global_to_local = &global_to_local;
+
+    global_to_local.clear();
+    for (const NodeID u : nodes()) {
+      const NodeID u_global = _local_to_global[u];
+      global_to_local[u_global] = u;
+    }
   }
 
   [[nodiscard]] const LocalToGlobalMapping &local_to_global() const {
@@ -372,7 +382,8 @@ private:
   const NodeWeight _total_node_weight;
   const EdgeWeight _total_edge_weight;
 
-  StaticArray<NodeID> _global_to_local;
+  tbb::enumerable_thread_specific<DynamicFlatMap<NodeID, NodeID, NodeID>> &_global_to_local_ets;
+  DynamicFlatMap<NodeID, NodeID, NodeID> *_global_to_local;
   LocalToGlobalMapping _local_to_global;
   StaticArray<std::uint8_t> _border_nodes;
 };

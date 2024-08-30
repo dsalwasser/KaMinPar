@@ -124,9 +124,10 @@ protected:
   parallel::tbb_unique_ptr<std::uint8_t> _data = nullptr;
 };
 
-template <typename Key, typename Value>
-class DynamicFlatMap final : public DynamicMapBase<Key, Value, DynamicFlatMap<Key, Value>> {
-  using Base = DynamicMapBase<Key, Value, DynamicFlatMap<Key, Value>>;
+template <typename Key, typename Value, typename Timestamp = std::size_t>
+class DynamicFlatMap final
+    : public DynamicMapBase<Key, Value, DynamicFlatMap<Key, Value, Timestamp>> {
+  using Base = DynamicMapBase<Key, Value, DynamicFlatMap<Key, Value, Timestamp>>;
   using Base::INVALID_POS_MASK;
 
   friend Base;
@@ -134,7 +135,7 @@ class DynamicFlatMap final : public DynamicMapBase<Key, Value, DynamicFlatMap<Ke
   struct MapElement {
     Key key;
     Value value;
-    std::size_t timestamp;
+    Timestamp timestamp;
   };
 
   [[nodiscard]] static std::size_t murmur64(std::size_t key) {
@@ -221,8 +222,8 @@ private:
   using Base::_data;
   using Base::_size;
 
-  std::size_t _old_timestamp = 0;
-  std::size_t _timestamp = 1;
+  Timestamp _old_timestamp = 0;
+  Timestamp _timestamp = 1;
 
   MapElement *_elements = nullptr;
 };

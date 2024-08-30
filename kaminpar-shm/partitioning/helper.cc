@@ -100,16 +100,27 @@ void extend_partition_recursive(
     const BlockID k,
     const BlockID final_k,
     const Context &input_ctx,
-    InitialBipartitionerWorkerPool &bipartitioner_pool
+    InitialBipartitionerWorkerPool &bipartitioner_pool,
+    BipartitionTimingInfo *timings
 ) {
-  PartitionedGraph p_graph =
-      bipartition(&graph, final_k, input_ctx, bipartitioner_pool, false, nullptr);
+  timer::LocalTimer timer;
 
+  timer.reset();
+  graph.block_induced_reified([&](auto &graph) { graph.init_global_to_local(); });
+  if (timings != nullptr)
+    timings->misc_ms += timer.elapsed();
+
+  PartitionedGraph p_graph =
+      bipartition(&graph, final_k, input_ctx, bipartitioner_pool, false, timings);
+
+  // timer.reset();
   std::array<BlockID, 2> final_ks{0, 0};
   std::array<BlockID, 2> ks{0, 0};
   std::tie(final_ks[0], final_ks[1]) = math::split_integral(final_k);
   std::tie(ks[0], ks[1]) = math::split_integral(k);
   std::array<BlockID, 2> b{b0, b0 + ks[0]};
+  // if (timings != nullptr)
+  //   timings->misc_ms += timer.elapsed();
 
   DBG << "bipartitioning graph with weight " << graph.total_node_weight() << " = "
       << p_graph.block_weight(0) << " + " << p_graph.block_weight(1) << " for final k " << final_k
@@ -117,12 +128,15 @@ void extend_partition_recursive(
       << " + " << ks[1] << " blocks";
 
   const auto copy_partition = [&] {
+    timer.reset();
     graph.block_induced_reified([&](auto &graph) {
       const auto &local_to_global = graph.local_to_global();
       for (const NodeID u : graph.nodes()) {
         partition[local_to_global[u]] = local_b + p_graph.block(u);
       }
     });
+    if (timings != nullptr)
+      timings->copy_ms += timer.elapsed();
   };
 
   if (k <= 2) {
@@ -132,7 +146,10 @@ void extend_partition_recursive(
     return;
   }
 
+  timer.reset();
   auto [subgraphs] = graph::extract_span_subgraphs_sequential(p_graph, final_ks, local_b);
+  if (timings != nullptr)
+    timings->extract_ms += timer.elapsed();
   copy_partition();
 
   for (const std::size_t i : {0, 1}) {
@@ -150,7 +167,8 @@ void extend_partition_recursive(
         ks[i],
         final_ks[i],
         input_ctx,
-        bipartitioner_pool
+        bipartitioner_pool,
+        timings
     );
   }
 }
@@ -267,9 +285,11 @@ void extend_partition(
   const BlockID n = p_graph.n();
   const BlockID k = p_graph.k();
 
+  tbb::enumerable_thread_specific<DynamicFlatMap<NodeID, NodeID, NodeID>> global_to_local_ets;
   StaticArray<NodeID> secondary_buffer(n, static_array::noinit);
-  auto [subgraphs, global_to_local, shared_local_to_global, border_nodes] =
-      graph::extract_span_subgraphs(p_graph, input_ctx.partition.k, secondary_buffer.data());
+  auto [subgraphs, shared_local_to_global, border_nodes] = graph::extract_span_subgraphs(
+      p_graph, input_ctx.partition.k, global_to_local_ets, secondary_buffer.data()
+  );
 
   START_HEAP_PROFILER("Compute local block indices");
   START_TIMER("Compute local block indices");
@@ -287,12 +307,16 @@ void extend_partition(
   STOP_TIMER();
   STOP_HEAP_PROFILER();
 
+  tbb::enumerable_thread_specific<BipartitionTimingInfo> timings_ets;
+
   StaticArray<BlockID> partition = p_graph.take_raw_partition();
   StaticArray<BlockID> partition_remapping(local_block_indices.back());
   TIMED_SCOPE("Bipartitioning") {
     SCOPED_HEAP_PROFILER("Bipartitioning");
 
     tbb::parallel_for<BlockID>(0, k, [&](const BlockID b) {
+      BipartitionTimingInfo &timing = timings_ets.local();
+
       auto &subgraph = subgraphs[b];
       const BlockID final_kb = compute_final_k(b, k, input_ctx.partition.k);
       const BlockID subgraph_k = (k_prime == input_ctx.partition.k) ? final_kb : k_prime / k;
@@ -315,10 +339,47 @@ void extend_partition(
           subgraph_k,
           final_kb,
           input_ctx,
-          bipartitioner_pool
+          bipartitioner_pool,
+          &timing
       );
     });
   };
+
+  if (false) {
+    auto timings = timings_ets.combine([](auto &a, const auto &b) { return a += b; });
+
+    LOG << "bipartitioner_init_ms: "
+        << static_cast<std::uint64_t>(timings.bipartitioner_init_ms / 1e6);
+    LOG << "bipartitioner_ms:      " << static_cast<std::uint64_t>(timings.bipartitioner_ms / 1e6);
+    LOG << "  total_ms:            "
+        << static_cast<std::uint64_t>(timings.ip_timings.total_ms / 1e6);
+    LOG << "  misc_ms:             "
+        << static_cast<std::uint64_t>(timings.ip_timings.misc_ms / 1e6);
+    LOG << "  coarsening_ms:       "
+        << static_cast<std::uint64_t>(timings.ip_timings.coarsening_ms / 1e6);
+    LOG << "    misc_ms:           "
+        << static_cast<std::uint64_t>(timings.ip_timings.coarsening_misc_ms / 1e6);
+    LOG << "    call_ms:           "
+        << static_cast<std::uint64_t>(timings.ip_timings.coarsening_call_ms / 1e6);
+    LOG << "      alloc_ms:        "
+        << static_cast<std::uint64_t>(timings.ip_timings.coarsening.alloc_ms / 1e6);
+    LOG << "      contract_ms:     "
+        << static_cast<std::uint64_t>(timings.ip_timings.coarsening.contract_ms / 1e6);
+    LOG << "      lp_ms:           "
+        << static_cast<std::uint64_t>(timings.ip_timings.coarsening.lp_ms / 1e6);
+    LOG << "      interleaved1:    "
+        << static_cast<std::uint64_t>(timings.ip_timings.coarsening.interleaved1_ms / 1e6);
+    LOG << "      interleaved2:    "
+        << static_cast<std::uint64_t>(timings.ip_timings.coarsening.interleaved2_ms / 1e6);
+    LOG << "  bipartitioning_ms:   "
+        << static_cast<std::uint64_t>(timings.ip_timings.bipartitioning_ms / 1e6);
+    LOG << "  uncoarsening_ms:     "
+        << static_cast<std::uint64_t>(timings.ip_timings.uncoarsening_ms / 1e6);
+    LOG << "graph_init_ms:         " << static_cast<std::uint64_t>(timings.graph_init_ms / 1e6);
+    LOG << "extract_ms:            " << static_cast<std::uint64_t>(timings.extract_ms / 1e6);
+    LOG << "copy_ms:               " << static_cast<std::uint64_t>(timings.copy_ms / 1e6);
+    LOG << "misc_ms:               " << static_cast<std::uint64_t>(timings.misc_ms / 1e6);
+  }
 
   TIMED_SCOPE("Copy subgraph partitions") {
     SCOPED_HEAP_PROFILER("Copy subgraph partitions");
@@ -441,11 +502,9 @@ void extend_partition(
   };
   STOP_HEAP_PROFILER();
 
-  auto timings = timings_ets.combine([](BipartitionTimingInfo &a, const BipartitionTimingInfo &b) {
-    return a += b;
-  });
-
   if (false) {
+    auto timings = timings_ets.combine([](auto &a, const auto &b) { return a += b; });
+
     LOG << "bipartitioner_init_ms: "
         << static_cast<std::uint64_t>(timings.bipartitioner_init_ms / 1e6);
     LOG << "bipartitioner_ms:      " << static_cast<std::uint64_t>(timings.bipartitioner_ms / 1e6);

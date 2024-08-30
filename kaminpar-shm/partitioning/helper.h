@@ -74,7 +74,8 @@ void extend_partition_recursive(
     const BlockID k,
     const BlockID final_k,
     const Context &input_ctx,
-    InitialBipartitionerWorkerPool &bipartitioner_pool
+    InitialBipartitionerWorkerPool &bipartitioner_pool,
+    BipartitionTimingInfo *timings = nullptr
 );
 
 void extend_partition_recursive(
