@@ -83,6 +83,13 @@ CLI::Option_group *create_partitioning_options(CLI::App *app, Context &ctx) {
           "Whether to use subgraph memory for bipartitioning"
       )
       ->capture_default_str();
+  partitioning
+      ->add_option(
+          "--p-use-only-toplevel-subgraph-view",
+          ctx.partitioning.use_only_toplevel_subgraph_view,
+          "Whether to use subgraph view only for toplevel bipartitioning"
+      )
+      ->capture_default_str();
 
   create_partitioning_rearrangement_options(app, ctx);
 

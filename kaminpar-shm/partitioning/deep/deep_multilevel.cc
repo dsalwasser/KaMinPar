@@ -92,7 +92,9 @@ void DeepMultilevelPartitioner::extend_partition(PartitionedGraph &p_graph, cons
   SCOPED_HEAP_PROFILER("Extending partition");
   LOG << "  Extending partition from " << p_graph.k() << " blocks to " << k_prime << " blocks";
 
-  if (_input_ctx.partitioning.use_subgraph_memory) {
+  const bool toplevel = _coarsener->level() == 0;
+  if (_input_ctx.partitioning.use_subgraph_memory ||
+      _input_ctx.partitioning.use_only_toplevel_subgraph_view && !toplevel) {
     partitioning::extend_partition(
         p_graph,
         k_prime,
@@ -154,7 +156,7 @@ const Graph *DeepMultilevelPartitioner::coarsen() {
   NodeWeight prev_c_graph_total_node_weight = c_graph->total_node_weight();
   bool shrunk = true;
 
-  bool search_subgraph_memory_size = _input_ctx.partitioning.use_subgraph_memory;
+  bool search_subgraph_memory_size = true;
   NodeID subgraph_memory_n;
   EdgeID subgraph_memory_m;
   NodeID subgraph_memory_n_weights;
@@ -185,16 +187,26 @@ const Graph *DeepMultilevelPartitioner::coarsen() {
         partitioning::compute_k_for_n(c_graph->n(), _input_ctx) < _input_ctx.partition.k) {
       search_subgraph_memory_size = false;
 
-      subgraph_memory_n = prev_c_graph_n;
-      subgraph_memory_m = prev_c_graph_m;
-
       const bool toplevel = _coarsener->level() == 1;
-      if (toplevel) {
-        subgraph_memory_n_weights = _input_graph.is_node_weighted() ? prev_c_graph_n : c_graph->n();
-        subgraph_memory_m_weights = _input_graph.is_edge_weighted() ? prev_c_graph_m : c_graph->m();
+      if (!_input_ctx.partitioning.use_subgraph_memory &&
+          _input_ctx.partitioning.use_only_toplevel_subgraph_view && toplevel) {
+        subgraph_memory_n = subgraph_memory_n_weights = c_graph->n();
+        subgraph_memory_m = subgraph_memory_m_weights = c_graph->m();
       } else {
-        subgraph_memory_n_weights = prev_c_graph_n;
-        subgraph_memory_m_weights = prev_c_graph_m;
+        subgraph_memory_n = prev_c_graph_n;
+        subgraph_memory_m = prev_c_graph_m;
+
+        if (toplevel && _input_graph.is_node_weighted()) {
+          subgraph_memory_n_weights = prev_c_graph_n;
+        } else {
+          subgraph_memory_n_weights = c_graph->n();
+        }
+
+        if (toplevel && _input_graph.is_edge_weighted()) {
+          subgraph_memory_n_weights = prev_c_graph_m;
+        } else {
+          subgraph_memory_m_weights = c_graph->m();
+        }
       }
     }
 
@@ -218,7 +230,8 @@ const Graph *DeepMultilevelPartitioner::coarsen() {
     subgraph_memory_m = subgraph_memory_m_weights = prev_c_graph_m;
   }
 
-  if (_input_ctx.partitioning.use_subgraph_memory) {
+  if (_input_ctx.partitioning.use_subgraph_memory ||
+      _input_ctx.partitioning.use_only_toplevel_subgraph_view) {
     _subgraph_memory.resize(
         subgraph_memory_n,
         _input_ctx.partition.k,
