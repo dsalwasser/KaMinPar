@@ -107,6 +107,15 @@ void extend_partition(
     BlockID k_prime,
     const Context &input_ctx,
     PartitionContext &current_p_ctx,
+    InitialBipartitionerWorkerPool &bipartitioner_pool,
+    int num_active_threads
+);
+
+void extend_partition(
+    PartitionedGraph &p_graph,
+    BlockID k_prime,
+    const Context &input_ctx,
+    PartitionContext &current_p_ctx,
     graph::SubgraphMemory &subgraph_memory,
     TemporarySubgraphMemoryEts &tmp_extraction_mem_pool_ets,
     InitialBipartitionerWorkerPool &bipartitioner_pool,

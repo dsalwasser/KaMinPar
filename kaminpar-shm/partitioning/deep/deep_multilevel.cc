@@ -242,8 +242,8 @@ const Graph *DeepMultilevelPartitioner::coarsen() {
   }
 
   if (!_input_ctx.partitioning.use_lazy_subgraph_memory &&
-          _input_ctx.partitioning.use_subgraph_memory ||
-      _input_ctx.partitioning.use_only_toplevel_subgraph_view) {
+      (_input_ctx.partitioning.use_subgraph_memory ||
+       _input_ctx.partitioning.use_only_toplevel_subgraph_view)) {
     _subgraph_memory.resize(
         subgraph_memory_n,
         _input_ctx.partition.k,

@@ -7,7 +7,6 @@
 #pragma once
 
 #include <array>
-#include <utility>
 #include <vector>
 
 #include "kaminpar-shm/datastructures/graph.h"
