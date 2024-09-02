@@ -26,12 +26,12 @@
 // Gain cache variations: unless compiled with experimental features enabled, only the sparse gain
 // cache will be available
 #ifdef KAMINPAR_EXPERIMENTAL
-#include "kaminpar-shm/refinement/gains/compact_hashing_gain_cache.h"
 #include "kaminpar-shm/refinement/gains/dense_gain_cache.h"
 #include "kaminpar-shm/refinement/gains/hashing_gain_cache.h"
 #include "kaminpar-shm/refinement/gains/on_the_fly_gain_cache.h"
 #endif
 
+#include "kaminpar-shm/refinement/gains/compact_hashing_gain_cache.h"
 #include "kaminpar-shm/refinement/gains/sparse_gain_cache.h"
 
 namespace kaminpar::shm {
@@ -574,42 +574,47 @@ FMRefiner::FMRefiner(const Context &input_ctx) : _ctx(input_ctx) {}
 FMRefiner::~FMRefiner() = default;
 
 void FMRefiner::initialize(const PartitionedGraph &p_graph) {
-  if (!_core) {
-    p_graph.reified([&]<typename Graph>(Graph &graph) {
-      switch (_ctx.refinement.kway_fm.gain_cache_strategy) {
-      case GainCacheStrategy::SPARSE:
-        _core = std::make_unique<FMRefinerCore<Graph, NormalSparseGainCache>>(_ctx);
-        break;
+  p_graph.reified([&]<typename Graph>(Graph &graph) {
+    switch (_ctx.refinement.kway_fm.gain_cache_strategy) {
+    case GainCacheStrategy::COMPACT_HASHING:
+      _core = std::make_unique<FMRefinerCore<Graph, NormalCompactHashingGainCache>>(_ctx);
+      break;
+
+    case GainCacheStrategy::SPARSE:
+      _core = std::make_unique<FMRefinerCore<Graph, NormalSparseGainCache>>(_ctx);
+      break;
 
 #ifdef KAMINPAR_EXPERIMENTAL
-      case GainCacheStrategy::HASHING:
-        _core = std::make_unique<FMRefinerCore<Graph, NormalHashingGainCache>>(_ctx);
-        break;
+    case GainCacheStrategy::COMPACT_HASHING_LARGE_K:
+      _core = std::make_unique<FMRefinerCore<Graph, LargeKCompactHashingGainCache>>(_ctx);
+      break;
 
-      case GainCacheStrategy::LARGE_K:
-        _core = std::make_unique<FMRefinerCore<Graph, LargeKSparseGainCache>>(_ctx);
-        break;
+    case GainCacheStrategy::SPARSE_LARGE_K:
+      _core = std::make_unique<FMRefinerCore<Graph, LargeKSparseGainCache>>(_ctx);
+      break;
 
-      case GainCacheStrategy::COMPACT_HASHING:
-        _core = std::make_unique<FMRefinerCore<Graph, NormalCompactHashingGainCache>>(_ctx);
-        break;
+    case GainCacheStrategy::HASHING:
+      _core = std::make_unique<FMRefinerCore<Graph, NormalHashingGainCache>>(_ctx);
+      break;
 
-      case GainCacheStrategy::DENSE:
-        _core = std::make_unique<FMRefinerCore<Graph, NormalDenseGainCache>>(_ctx);
-        break;
+    case GainCacheStrategy::HASHING_LARGE_K:
+      _core = std::make_unique<FMRefinerCore<Graph, LargeKHashingGainCache>>(_ctx);
+      break;
 
-      case GainCacheStrategy::ON_THE_FLY:
-        _core = std::make_unique<FMRefinerCore<Graph, NormalOnTheFlyGainCache>>(_ctx);
-        break;
+    case GainCacheStrategy::DENSE:
+      _core = std::make_unique<FMRefinerCore<Graph, NormalDenseGainCache>>(_ctx);
+      break;
+
+    case GainCacheStrategy::ON_THE_FLY:
+      _core = std::make_unique<FMRefinerCore<Graph, NormalOnTheFlyGainCache>>(_ctx);
+      break;
 #endif // KAMINPAR_EXPERIMENTAL
 
-      default:
-        LOG_ERROR
-            << "invalid gain cache strategy: requires build with experimental features enabled";
-        std::exit(1);
-      }
-    });
-  }
+    default:
+      LOG_ERROR << "invalid gain cache strategy: requires build with experimental features enabled";
+      std::exit(1);
+    }
+  });
 
   _core->initialize(p_graph);
 }

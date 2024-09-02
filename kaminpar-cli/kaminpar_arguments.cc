@@ -85,6 +85,13 @@ CLI::Option_group *create_partitioning_options(CLI::App *app, Context &ctx) {
       ->capture_default_str();
   partitioning
       ->add_option(
+          "--p-lazy-extract-subgraph-memory",
+          ctx.partitioning.use_lazy_subgraph_memory,
+          "Whether to lazily extract block-induced subgraph during bipartitioning"
+      )
+      ->capture_default_str();
+  partitioning
+      ->add_option(
           "--p-use-only-toplevel-subgraph-view",
           ctx.partitioning.use_only_toplevel_subgraph_view,
           "Whether to use subgraph view only for toplevel bipartitioning"
