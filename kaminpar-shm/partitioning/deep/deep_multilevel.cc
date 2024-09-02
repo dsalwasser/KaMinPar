@@ -207,16 +207,16 @@ const Graph *DeepMultilevelPartitioner::coarsen() {
         subgraph_memory_n = prev_c_graph_n;
         subgraph_memory_m = prev_c_graph_m;
 
-        if (toplevel && _input_graph.is_node_weighted()) {
-          subgraph_memory_n_weights = prev_c_graph_n;
-        } else {
+        if (toplevel && !_input_graph.is_node_weighted()) {
           subgraph_memory_n_weights = c_graph->n();
+        } else {
+          subgraph_memory_n_weights = prev_c_graph_n;
         }
 
-        if (toplevel && _input_graph.is_edge_weighted()) {
-          subgraph_memory_n_weights = prev_c_graph_m;
-        } else {
+        if (toplevel && !_input_graph.is_edge_weighted()) {
           subgraph_memory_m_weights = c_graph->m();
+        } else {
+          subgraph_memory_m_weights = prev_c_graph_m;
         }
       }
     }
