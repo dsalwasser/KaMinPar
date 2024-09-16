@@ -353,7 +353,13 @@ Options are:
       ->capture_default_str();
 
   con->add_option(
-         "--c-con-edge-buffer-fill-fraction",
+         "--c-contraction-sort",
+         ctx.coarsening.contraction.sort_by_deg_buckets,
+         "Whether to rearrange the coarse nodes by degree-bucket"
+  )
+      ->capture_default_str();
+  con->add_option(
+         "--c-contraction-edge-buffer-fill-fraction",
          ctx.coarsening.contraction.edge_buffer_fill_fraction,
          "The fraction of the total edges with which to fill the edge buffer"
   )

@@ -177,15 +177,13 @@ std::unique_ptr<CoarseGraph> contract_clustering_unbuffered_naive(
 } // namespace
 
 std::unique_ptr<CoarseGraph> contract_clustering_unbuffered_naive(
-    const Graph &graph,
-    StaticArray<NodeID> clustering,
-    const ContractionCoarseningContext &con_ctx,
-    MemoryContext &m_ctx
+    const Context &ctx, const Graph &graph, StaticArray<NodeID> clustering, MemoryContext &m_ctx
 ) {
-  auto [c_n, mapping] = compute_mapping(graph, std::move(clustering), m_ctx);
-  fill_cluster_buckets(c_n, graph, mapping, m_ctx.buckets_index, m_ctx.buckets);
+  auto [_, c_n, mapping] = contraction_preprocessing(ctx, graph, std::move(clustering), m_ctx);
   return graph.reified([&](auto &graph) {
-    return contract_clustering_unbuffered_naive(graph, c_n, std::move(mapping), con_ctx, m_ctx);
+    return contract_clustering_unbuffered_naive(
+        graph, c_n, std::move(mapping), ctx.coarsening.contraction, m_ctx
+    );
   });
 }
 } // namespace kaminpar::shm::contraction

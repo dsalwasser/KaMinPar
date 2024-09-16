@@ -123,6 +123,7 @@ std::unique_ptr<CoarseGraph> contract_clustering_unbuffered(
     const Graph &graph,
     const NodeID c_n,
     StaticArray<NodeID> mapping,
+    const bool sorted,
     const ContractionCoarseningContext &con_ctx,
     MemoryContext &m_ctx
 ) {
@@ -579,7 +580,8 @@ std::unique_ptr<CoarseGraph> contract_clustering_unbuffered(
           std::move(c_nodes),
           std::move(finalized_c_edges),
           std::move(c_node_weights),
-          std::move(finalized_c_edge_weights)
+          std::move(finalized_c_edge_weights),
+          sorted
       )),
       std::move(mapping)
   );
@@ -587,15 +589,15 @@ std::unique_ptr<CoarseGraph> contract_clustering_unbuffered(
 } // namespace
 
 std::unique_ptr<CoarseGraph> contract_clustering_unbuffered(
-    const Graph &graph,
-    StaticArray<NodeID> clustering,
-    const ContractionCoarseningContext &con_ctx,
-    MemoryContext &m_ctx
+    const Context &ctx, const Graph &graph, StaticArray<NodeID> clustering, MemoryContext &m_ctx
 ) {
-  auto [c_n, mapping] = compute_mapping(graph, std::move(clustering), m_ctx);
-  fill_cluster_buckets(c_n, graph, mapping, m_ctx.buckets_index, m_ctx.buckets);
-  return graph.reified([&](auto &graph) {
-    return contract_clustering_unbuffered(graph, c_n, std::move(mapping), con_ctx, m_ctx);
+  auto [force_level, c_n, mapping] =
+      contraction_preprocessing(ctx, graph, std::move(clustering), m_ctx);
+  const bool sorted = ctx.coarsening.contraction.sort_by_deg_buckets && !force_level;
+  return graph.reified([&](const auto &graph) {
+    return contract_clustering_unbuffered(
+        graph, c_n, std::move(mapping), sorted, ctx.coarsening.contraction, m_ctx
+    );
   });
 }
 } // namespace kaminpar::shm::contraction

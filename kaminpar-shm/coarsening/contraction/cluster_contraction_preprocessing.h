@@ -40,22 +40,7 @@ private:
   StaticArray<NodeID> _mapping;
 };
 
-void fill_leader_mapping(
-    const Graph &graph, const StaticArray<NodeID> &clustering, StaticArray<NodeID> &leader_mapping
-);
-
-StaticArray<NodeID> compute_mapping(
-    const Graph &graph, StaticArray<NodeID> clustering, const StaticArray<NodeID> &leader_mapping
-);
-
-std::pair<NodeID, StaticArray<NodeID>>
-compute_mapping(const Graph &graph, StaticArray<NodeID> clustering, MemoryContext &m_ctx);
-
-void fill_cluster_buckets(
-    const NodeID c_n,
-    const Graph &graph,
-    const StaticArray<NodeID> &mapping,
-    StaticArray<NodeID> &buckets_index,
-    StaticArray<NodeID> &buckets
+std::tuple<bool, NodeID, StaticArray<NodeID>> contraction_preprocessing(
+    const Context &ctx, const Graph &graph, StaticArray<NodeID> clustering, MemoryContext &m_ctx
 );
 } // namespace kaminpar::shm::contraction

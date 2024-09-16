@@ -7,8 +7,6 @@
  ******************************************************************************/
 #include "kaminpar-shm/coarsening/cluster_coarsener.h"
 
-#include <algorithm>
-
 #include "kaminpar-shm/coarsening/contraction/cluster_contraction.h"
 #include "kaminpar-shm/coarsening/max_cluster_weights.h"
 #include "kaminpar-shm/factories.h"
@@ -55,6 +53,7 @@ bool ClusteringCoarsener::coarsen() {
       compute_max_cluster_weight<NodeWeight>(_c_ctx, _p_ctx, prev_n, total_node_weight)
   );
 
+  /*
   {
     NodeID desired_cluster_count = prev_n / _c_ctx.clustering.shrink_factor;
 
@@ -78,6 +77,7 @@ bool ClusteringCoarsener::coarsen() {
     DBG << "Desired cluster count: " << desired_cluster_count;
     _clustering_algorithm->set_desired_cluster_count(desired_cluster_count);
   }
+  */
 
   _clustering_algorithm->compute_clustering(clustering, current(), free_allocated_memory);
   STOP_TIMER();
@@ -85,9 +85,7 @@ bool ClusteringCoarsener::coarsen() {
 
   START_HEAP_PROFILER("Contract graph");
   auto coarsened = TIMED_SCOPE("Contract graph") {
-    return contract_clustering(
-        current(), std::move(clustering), _c_ctx.contraction, _contraction_m_ctx
-    );
+    return contract_clustering(_ctx, current(), std::move(clustering), _contraction_m_ctx);
   };
   _hierarchy.push_back(std::move(coarsened));
   STOP_HEAP_PROFILER();
@@ -98,6 +96,7 @@ bool ClusteringCoarsener::coarsen() {
   if (free_allocated_memory) {
     _contraction_m_ctx.buckets.free();
     _contraction_m_ctx.buckets_index.free();
+    _contraction_m_ctx.leader_mapping.free();
     _contraction_m_ctx.all_buffered_nodes.free();
   }
 

@@ -16,9 +16,6 @@
 
 namespace kaminpar::shm::contraction {
 std::unique_ptr<CoarseGraph> contract_clustering_buffered_legacy(
-    const Graph &graph,
-    StaticArray<NodeID> clustering,
-    const ContractionCoarseningContext &con_ctx,
-    MemoryContext &m_ctx
+    const Context &ctx, const Graph &graph, StaticArray<NodeID> clustering, MemoryContext &m_ctx
 );
 }

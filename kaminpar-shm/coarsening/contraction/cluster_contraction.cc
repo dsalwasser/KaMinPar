@@ -24,28 +24,24 @@
 namespace kaminpar::shm {
 using namespace contraction;
 
-std::unique_ptr<CoarseGraph> contract_clustering(
-    const Graph &graph, StaticArray<NodeID> clustering, const ContractionCoarseningContext &con_ctx
-) {
+std::unique_ptr<CoarseGraph>
+contract_clustering(const Context &ctx, const Graph &graph, StaticArray<NodeID> clustering) {
   MemoryContext m_ctx;
-  return contract_clustering(graph, std::move(clustering), con_ctx, m_ctx);
+  return contract_clustering(ctx, graph, std::move(clustering), m_ctx);
 }
 
 std::unique_ptr<CoarseGraph> contract_clustering(
-    const Graph &graph,
-    StaticArray<NodeID> clustering,
-    const ContractionCoarseningContext &con_ctx,
-    MemoryContext &m_ctx
+    const Context &ctx, const Graph &graph, StaticArray<NodeID> clustering, MemoryContext &m_ctx
 ) {
-  switch (con_ctx.algorithm) {
+  switch (ctx.coarsening.contraction.algorithm) {
   case ContractionAlgorithm::BUFFERED:
-    return contract_clustering_buffered(graph, std::move(clustering), con_ctx, m_ctx);
+    return contract_clustering_buffered(ctx, graph, std::move(clustering), m_ctx);
   case ContractionAlgorithm::BUFFERED_LEGACY:
-    return contract_clustering_buffered_legacy(graph, std::move(clustering), con_ctx, m_ctx);
+    return contract_clustering_buffered_legacy(ctx, graph, std::move(clustering), m_ctx);
   case ContractionAlgorithm::UNBUFFERED:
-    return contract_clustering_unbuffered(graph, std::move(clustering), con_ctx, m_ctx);
+    return contract_clustering_unbuffered(ctx, graph, std::move(clustering), m_ctx);
   case ContractionAlgorithm::UNBUFFERED_NAIVE:
-    return contract_clustering_unbuffered_naive(graph, std::move(clustering), con_ctx, m_ctx);
+    return contract_clustering_unbuffered_naive(ctx, graph, std::move(clustering), m_ctx);
   }
 
   __builtin_unreachable();

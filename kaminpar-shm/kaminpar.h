@@ -171,6 +171,9 @@ struct ContractionCoarseningContext {
   ContractionAlgorithm algorithm;
   ContractionImplementation unbuffered_implementation;
 
+  bool sort_by_deg_buckets;
+  bool forced_level = false;
+
   double edge_buffer_fill_fraction;
 };
 

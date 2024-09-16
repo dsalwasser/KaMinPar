@@ -133,6 +133,7 @@ Context create_default_context() {
                       // Context -> Coarsening -> Contraction
                       .algorithm = ContractionAlgorithm::BUFFERED,
                       .unbuffered_implementation = ContractionImplementation::TWO_PHASE,
+                      .sort_by_deg_buckets = false,
                       .edge_buffer_fill_fraction = 1,
                   },
               .contraction_limit = 2000,
