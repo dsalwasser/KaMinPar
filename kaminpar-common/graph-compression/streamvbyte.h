@@ -336,11 +336,11 @@ public:
         _num_values(num_values),
         _data_ptr(ptr + _num_control_bytes + ((num_values % 4) != 0)) {}
 
-  template <typename Lambda> void decode(Lambda &&l) {
+  void decode(Int *out) {
     if constexpr (k32BitInts) {
-      decode32(std::forward<Lambda>(l));
+      decode32(out);
     } else {
-      decode64(std::forward<Lambda>(l));
+      decode64(out);
     }
   }
 
@@ -350,17 +350,7 @@ public:
 
 private:
 #if defined(__x86_64__)
-  template <typename Lambda> void decode32(Lambda &&l) {
-    static_assert(
-        std::is_invocable_v<Lambda, Int> || (PassPairs && std::is_invocable_v<Lambda, Int, Int>)
-    );
-
-    using LambdaReturnType = std::conditional_t<
-        PassPairs,
-        std::invoke_result<Lambda, Int, Int>,
-        std::invoke_result<Lambda, Int>>::type;
-    constexpr bool kNonStoppable = std::is_void_v<LambdaReturnType>;
-
+  void decode32(Int *out) {
     __m128i prev = _mm_setzero_si128();
     const auto decode_gaps = [&](__m128i data) {
       if constexpr (GapKind == DifferentialCodingKind::NONE) {
@@ -400,142 +390,21 @@ private:
       data = _mm_shuffle_epi8(data, mask);
       decode_gaps(data);
 
-      if constexpr (kNonStoppable) {
-        if constexpr (PassPairs) {
-          l(_mm_extract_epi32(prev, 0), _mm_extract_epi32(prev, 1));
-          l(_mm_extract_epi32(prev, 2), _mm_extract_epi32(prev, 3));
-        } else {
-          l(_mm_extract_epi32(prev, 0));
-          l(_mm_extract_epi32(prev, 1));
-          l(_mm_extract_epi32(prev, 2));
-          l(_mm_extract_epi32(prev, 3));
-        }
-      } else {
-        if constexpr (PassPairs) {
-          if (l(_mm_extract_epi32(prev, 0), _mm_extract_epi32(prev, 1))) [[unlikely]] {
-            return;
-          }
-
-          if (l(_mm_extract_epi32(prev, 2), _mm_extract_epi32(prev, 3))) [[unlikely]] {
-            return;
-          }
-        } else {
-          if (l(_mm_extract_epi32(prev, 0))) [[unlikely]] {
-            return;
-          }
-
-          if (l(_mm_extract_epi32(prev, 1))) [[unlikely]] {
-            return;
-          }
-
-          if (l(_mm_extract_epi32(prev, 2))) [[unlikely]] {
-            return;
-          }
-
-          if (l(_mm_extract_epi32(prev, 3))) [[unlikely]] {
-            return;
-          }
-        }
-      }
+      _mm_storeu_si128((__m128i *)out, prev);
+      out += 4;
     }
 
-    if constexpr (PassPairs) {
-      if (_num_values % 4 == 2) {
-        const std::uint8_t control_byte = _control_bytes_ptr[_num_control_bytes];
-        const std::uint8_t length = kLengthTable[control_byte];
+    if (_num_values % 4 != 0) {
+      const std::uint8_t control_byte = _control_bytes_ptr[_num_control_bytes];
+      const std::uint8_t *shuffle_mask = kShuffleTable[control_byte].data();
 
-        const std::uint8_t *shuffle_mask = kShuffleTable[control_byte].data();
-        const __m128i mask = _mm_loadu_si128((const __m128i *)shuffle_mask);
+      __m128i data = _mm_loadu_si128((const __m128i *)_data_ptr);
+      const __m128i mask = _mm_loadu_si128((const __m128i *)shuffle_mask);
 
-        __m128i data = _mm_loadu_si128((const __m128i *)_data_ptr);
-        _data_ptr += length - 2;
+      data = _mm_shuffle_epi8(data, mask);
+      decode_gaps(data);
 
-        data = _mm_shuffle_epi8(data, mask);
-        decode_gaps(data);
-
-        if constexpr (kNonStoppable) {
-          l(_mm_extract_epi32(prev, 0), _mm_extract_epi32(prev, 1));
-        } else {
-          if (l(_mm_extract_epi32(prev, 0), _mm_extract_epi32(prev, 1))) [[unlikely]] {
-            return;
-          }
-        }
-      }
-    } else {
-      switch (_num_values % 4) {
-      case 1: {
-        const std::uint8_t control_byte = _control_bytes_ptr[_num_control_bytes];
-        const std::uint8_t *shuffle_mask = kShuffleTable[control_byte].data();
-
-        __m128i data = _mm_loadu_si128((const __m128i *)_data_ptr);
-        const __m128i mask = _mm_loadu_si128((const __m128i *)shuffle_mask);
-
-        data = _mm_shuffle_epi8(data, mask);
-        decode_gaps(data);
-
-        if constexpr (kNonStoppable) {
-          l(_mm_extract_epi32(prev, 0));
-        } else {
-          if (l(_mm_extract_epi32(prev, 0))) [[unlikely]] {
-            return;
-          }
-        }
-        break;
-      }
-      case 2: {
-        const std::uint8_t control_byte = _control_bytes_ptr[_num_control_bytes];
-        const std::uint8_t *shuffle_mask = kShuffleTable[control_byte].data();
-
-        __m128i data = _mm_loadu_si128((const __m128i *)_data_ptr);
-        const __m128i mask = _mm_loadu_si128((const __m128i *)shuffle_mask);
-
-        data = _mm_shuffle_epi8(data, mask);
-        decode_gaps(data);
-
-        if constexpr (kNonStoppable) {
-          l(_mm_extract_epi32(prev, 0));
-          l(_mm_extract_epi32(prev, 1));
-        } else {
-          if (l(_mm_extract_epi32(prev, 0))) [[unlikely]] {
-            return;
-          }
-
-          if (l(_mm_extract_epi32(prev, 1))) [[unlikely]] {
-            return;
-          }
-        }
-        break;
-      }
-      case 3: {
-        const std::uint8_t control_byte = _control_bytes_ptr[_num_control_bytes];
-        const std::uint8_t *shuffle_mask = kShuffleTable[control_byte].data();
-
-        __m128i data = _mm_loadu_si128((const __m128i *)_data_ptr);
-        const __m128i mask = _mm_loadu_si128((const __m128i *)shuffle_mask);
-
-        data = _mm_shuffle_epi8(data, mask);
-        decode_gaps(data);
-
-        if constexpr (kNonStoppable) {
-          l(_mm_extract_epi32(prev, 0));
-          l(_mm_extract_epi32(prev, 1));
-          l(_mm_extract_epi32(prev, 2));
-        } else {
-          if (l(_mm_extract_epi32(prev, 0))) [[unlikely]] {
-            return;
-          }
-
-          if (l(_mm_extract_epi32(prev, 1))) [[unlikely]] {
-            return;
-          }
-
-          if (l(_mm_extract_epi32(prev, 2))) [[unlikely]] {
-            return;
-          }
-        }
-        break;
-      }
-      }
+      _mm_storeu_si128((__m128i *)out, prev);
     }
   }
 #elif defined(__aarch64__)

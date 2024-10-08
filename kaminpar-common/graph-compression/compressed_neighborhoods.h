@@ -7,6 +7,13 @@
  ******************************************************************************/
 #pragma once
 
+#include <type_traits>
+#include <utility>
+#include <vector>
+
+#include <tbb/enumerable_thread_specific.h>
+#include <tbb/parallel_for.h>
+
 #include "kaminpar-common/constexpr_utils.h"
 #include "kaminpar-common/datastructures/compact_static_array.h"
 #include "kaminpar-common/datastructures/static_array.h"
@@ -16,15 +23,7 @@
 #include "kaminpar-common/math.h"
 #include "kaminpar-common/ranges.h"
 
-#define INVOKE_CALLBACKU(edge, adjacent_node)                                                      \
-  if constexpr (kNonStoppable) {                                                                   \
-    callback(edge, adjacent_node);                                                                 \
-  } else {                                                                                         \
-    const bool stop = callback(edge, adjacent_node);                                               \
-    if (stop) [[unlikely]] {                                                                       \
-      return true;                                                                                 \
-    }                                                                                              \
-  }
+#define INVOKE_CALLBACKU(edge, adjacent_node) neighborhood_buffer.push_back(adjacent_node)
 
 #define INVOKE_CALLBACKW(edge, adjacent_node)                                                      \
   EdgeWeight edge_weight;                                                                          \
@@ -35,15 +34,7 @@
     edge_weight = _edge_weights[edge];                                                             \
   }                                                                                                \
                                                                                                    \
-  if constexpr (kNonStoppable) {                                                                   \
-    callback(edge, adjacent_node, edge_weight);                                                    \
-  } else {                                                                                         \
-    const bool stop = callback(edge, adjacent_node, edge_weight);                                  \
-    if (stop) [[unlikely]] {                                                                       \
-      return true;                                                                                 \
-    }                                                                                              \
-  }                                                                                                \
-                                                                                                   \
+  neighborhood_buffer.emplace_back(adjacent_node, edge_weight);                                    \
   prev_edge_weight = edge_weight;
 
 #define INVOKE_CALLBACK(edge, adjacent_node)                                                       \
@@ -76,6 +67,9 @@ template <typename NodeID, typename EdgeID, typename EdgeWeight> class Compresse
 
   using StreamVByteGapAndWeightsDecoder =
       streamvbyte::StreamVByteDecoder<NodeID, true, streamvbyte::DifferentialCodingKind::D2>;
+
+  using NeighborhoodBuffer = std::vector<NodeID>;
+  using WeightedNeighborhoodBuffer = std::vector<std::pair<NodeID, EdgeWeight>>;
 
   static constexpr EdgeWeight kDefaultEdgeWeight = 1;
 
@@ -144,7 +138,7 @@ public:
   /*!
    * The minimum number of adjacent nodes required to use StreamVByte encoding.
    */
-  static constexpr NodeID kStreamVByteThreshold = 3;
+  static constexpr NodeID kStreamVByteThreshold = 0;
 
   static_assert(
       !kRunLengthEncoding || !kStreamVByteEncoding,
@@ -543,11 +537,6 @@ private:
 
   template <bool kHasEdgeWeights, bool kParallel, typename Callback>
   void decode(const NodeID node, Callback &&callback) const {
-    constexpr bool kInvokeDirectly = std::conditional_t<
-        kHasEdgeWeights,
-        std::is_invocable<Callback, EdgeID, NodeID, EdgeWeight>,
-        std::is_invocable<Callback, EdgeID, NodeID>>::value;
-
     const std::uint8_t *data = _compressed_edges.data();
     const std::uint8_t *node_data = data + _nodes[node];
     const std::uint8_t *next_node_data = data + _nodes[node + 1];
@@ -568,8 +557,8 @@ private:
       last_edge = varint_decode<EdgeID>(next_node_data);
     }
 
+    const NodeID degree = static_cast<NodeID>(last_edge - edge);
     if constexpr (kHighDegreeEncoding) {
-      const NodeID degree = static_cast<NodeID>(last_edge - edge);
       const bool split_neighbourhood = degree >= kHighDegreeThreshold;
 
       if (split_neighbourhood) [[unlikely]] {
@@ -580,16 +569,73 @@ private:
       }
     }
 
-    invoke_indirect<kInvokeDirectly>(std::forward<Callback>(callback), [&](auto &&actual_callback) {
+    if constexpr (kHasEdgeWeights) {
+      auto &neighorhood_buffer = _weighted_neighborhood_buffer_ets.local();
       decode_edges<kHasEdgeWeights>(
-          node_data,
-          node,
-          edge,
-          last_edge,
-          has_intervals,
-          std::forward<decltype(actual_callback)>(actual_callback)
+          node_data, node, edge, last_edge, has_intervals, neighorhood_buffer
       );
-    });
+
+      constexpr bool kInvokeDirectly = std::is_invocable_v<Callback, EdgeID, NodeID, EdgeWeight>;
+      invoke_indirect<kInvokeDirectly>(
+          std::forward<Callback>(callback),
+          [&](auto &&actual_callback) {
+            using CallbackReturnType = std::conditional_t<
+                kHasEdgeWeights,
+                std::invoke_result<decltype(actual_callback), EdgeID, NodeID, EdgeWeight>,
+                std::invoke_result<decltype(actual_callback), EdgeID, NodeID>>::type;
+            constexpr bool kNonStoppable = std::is_void_v<CallbackReturnType>;
+
+            for (NodeID i = 0; i < degree; ++i) {
+              const auto &[adjacent_node, edge_weight] = neighorhood_buffer[i];
+
+              if constexpr (kNonStoppable) {
+                actual_callback(edge + i, adjacent_node, edge_weight);
+              } else {
+                const bool stop = actual_callback(edge + i, adjacent_node, edge_weight);
+                if (stop) [[unlikely]] {
+                  neighorhood_buffer.clear();
+                  return;
+                }
+              }
+            }
+
+            neighorhood_buffer.clear();
+          }
+      );
+    } else {
+      auto &neighorhood_buffer = _neighborhood_buffer_ets.local();
+      decode_edges<kHasEdgeWeights>(
+          node_data, node, edge, last_edge, has_intervals, neighorhood_buffer
+      );
+
+      constexpr bool kInvokeDirectly = std::is_invocable_v<Callback, EdgeID, NodeID>;
+      invoke_indirect<kInvokeDirectly>(
+          std::forward<Callback>(callback),
+          [&](auto &&actual_callback) {
+            using CallbackReturnType = std::conditional_t<
+                kHasEdgeWeights,
+                std::invoke_result<decltype(actual_callback), EdgeID, NodeID, EdgeWeight>,
+                std::invoke_result<decltype(actual_callback), EdgeID, NodeID>>::type;
+            constexpr bool kNonStoppable = std::is_void_v<CallbackReturnType>;
+
+            for (NodeID i = 0; i < degree; ++i) {
+              const auto &adjacent_node = neighorhood_buffer[i];
+
+              if constexpr (kNonStoppable) {
+                actual_callback(edge + i, adjacent_node);
+              } else {
+                const bool stop = actual_callback(edge + i, adjacent_node);
+                if (stop) [[unlikely]] {
+                  neighorhood_buffer.clear();
+                  return;
+                }
+              }
+            }
+
+            neighorhood_buffer.clear();
+          }
+      );
+    }
   }
 
   template <bool kHasEdgeWeights, bool kParallel, typename Callback>
@@ -601,13 +647,8 @@ private:
       const EdgeID last_edge,
       Callback &&callback
   ) const {
-    constexpr bool kInvokeDirectly = std::conditional_t<
-        kHasEdgeWeights,
-        std::is_invocable<Callback, EdgeID, NodeID, EdgeWeight>,
-        std::is_invocable<Callback, EdgeID, NodeID>>::value;
-
     const NodeID num_parts = math::div_ceil(degree, kHighDegreePartLength);
-    const auto decode_part = [&](const NodeID part) {
+    const auto decode_part = [&](const NodeID part) -> bool {
       NodeID part_offset = *(reinterpret_cast<const NodeID *>(node_data) + part);
 
       bool has_intervals;
@@ -616,24 +657,81 @@ private:
         part_offset &= ~math::kSetMSB<NodeID>;
       }
 
-      const EdgeID part_edge = edge + kHighDegreePartLength * part;
+      const std::uint8_t *part_data = node_data + part_offset;
+      EdgeID part_edge = edge + kHighDegreePartLength * part;
       const EdgeID part_last_edge =
           ((part + 1) == num_parts) ? last_edge : part_edge + kHighDegreePartLength;
 
-      const std::uint8_t *part_data = node_data + part_offset;
-      return invoke_indirect2<kInvokeDirectly, bool>(
-          std::forward<Callback>(callback),
-          [&](auto &&actual_callback) {
-            return decode_edges<kHasEdgeWeights>(
-                part_data,
-                node,
-                part_edge,
-                part_last_edge,
-                has_intervals,
-                std::forward<decltype(actual_callback)>(actual_callback)
-            );
-          }
-      );
+      const NodeID part_degree = static_cast<NodeID>(part_last_edge - part_edge);
+      if constexpr (kHasEdgeWeights) {
+        auto &neighorhood_buffer = _weighted_neighborhood_buffer_ets.local();
+        decode_edges<kHasEdgeWeights>(
+            part_data, node, part_edge, part_last_edge, has_intervals, neighorhood_buffer
+        );
+
+        constexpr bool kInvokeDirectly = std::is_invocable_v<Callback, EdgeID, NodeID, EdgeWeight>;
+        return invoke_indirect2<kInvokeDirectly, bool>(
+            std::forward<Callback>(callback),
+            [&](auto &&actual_callback) {
+              using CallbackReturnType = std::conditional_t<
+                  kHasEdgeWeights,
+                  std::invoke_result<decltype(actual_callback), EdgeID, NodeID, EdgeWeight>,
+                  std::invoke_result<decltype(actual_callback), EdgeID, NodeID>>::type;
+              constexpr bool kNonStoppable = std::is_void_v<CallbackReturnType>;
+
+              for (NodeID i = 0; i < part_degree; ++i) {
+                const auto &[adjacent_node, edge_weight] = neighorhood_buffer[i];
+
+                if constexpr (kNonStoppable) {
+                  actual_callback(part_edge + i, adjacent_node, edge_weight);
+                } else {
+                  const bool stop = actual_callback(part_edge + i, adjacent_node, edge_weight);
+                  if (stop) [[unlikely]] {
+                    neighorhood_buffer.clear();
+                    return true;
+                  }
+                }
+              }
+
+              neighorhood_buffer.clear();
+              return false;
+            }
+        );
+      } else {
+        auto &neighorhood_buffer = _neighborhood_buffer_ets.local();
+        decode_edges<kHasEdgeWeights>(
+            part_data, node, part_edge, part_last_edge, has_intervals, neighorhood_buffer
+        );
+
+        constexpr bool kInvokeDirectly = std::is_invocable_v<Callback, EdgeID, NodeID>;
+        return invoke_indirect2<kInvokeDirectly, bool>(
+            std::forward<Callback>(callback),
+            [&](auto &&actual_callback) {
+              using CallbackReturnType = std::conditional_t<
+                  kHasEdgeWeights,
+                  std::invoke_result<decltype(actual_callback), EdgeID, NodeID, EdgeWeight>,
+                  std::invoke_result<decltype(actual_callback), EdgeID, NodeID>>::type;
+              constexpr bool kNonStoppable = std::is_void_v<CallbackReturnType>;
+
+              for (NodeID i = 0; i < part_degree; ++i) {
+                const auto &adjacent_node = neighorhood_buffer[i];
+
+                if constexpr (kNonStoppable) {
+                  actual_callback(part_edge + i, adjacent_node);
+                } else {
+                  const bool stop = actual_callback(part_edge + i, adjacent_node);
+                  if (stop) [[unlikely]] {
+                    neighorhood_buffer.clear();
+                    return true;
+                  }
+                }
+              }
+
+              neighorhood_buffer.clear();
+              return false;
+            }
+        );
+      }
     };
 
     if constexpr (kParallel) {
@@ -648,21 +746,17 @@ private:
     }
   }
 
-  template <bool kHasEdgeWeights, typename Callback>
-  bool decode_edges(
+  template <bool kHasEdgeWeights>
+  void decode_edges(
       const std::uint8_t *node_data,
       const NodeID node,
       EdgeID edge,
       const EdgeID last_edge,
       const bool has_intervals,
-      Callback &&callback
+      std::conditional_t<kHasEdgeWeights, WeightedNeighborhoodBuffer, NeighborhoodBuffer>
+          &neighborhood_buffer
   ) const {
-    using CallbackReturnType = std::conditional_t<
-        kHasEdgeWeights,
-        std::invoke_result<Callback, EdgeID, NodeID, EdgeWeight>,
-        std::invoke_result<Callback, EdgeID, NodeID>>::type;
-    constexpr bool kNonStoppable = std::is_void_v<CallbackReturnType>;
-
+    const EdgeID first_edge = edge;
     EdgeWeight prev_edge_weight = 0;
     if constexpr (kIntervalEncoding) {
       if (has_intervals) {
@@ -694,7 +788,7 @@ private:
         } while (num_intervals > 0);
 
         if (edge == last_edge) [[unlikely]] {
-          return false;
+          return;
         }
       }
     }
@@ -704,6 +798,7 @@ private:
     INVOKE_CALLBACK(edge, first_adjacent_node);
     edge += 1;
 
+    /*
     if constexpr (kRunLengthEncoding) {
       const NodeID num_remaining_gaps = static_cast<NodeID>(last_edge - edge);
       VarIntRunLengthDecoder<NodeID> rl_decoder(num_remaining_gaps, node_data);
@@ -734,35 +829,25 @@ private:
       });
 
       return stop;
-    } else if constexpr (kStreamVByteEncoding) {
+    } else
+    */
+    if constexpr (kStreamVByteEncoding) {
       const NodeID num_remaining_gaps = static_cast<NodeID>(last_edge - edge);
-
       if (num_remaining_gaps >= kStreamVByteThreshold) {
-        bool stop = false;
 
         if constexpr (kHasEdgeWeights) {
           StreamVByteGapAndWeightsDecoder decoder(num_remaining_gaps * 2, node_data);
-          decoder.decode([&](const NodeID adjacent_node, const EdgeWeight edge_weight) {
-            if constexpr (kNonStoppable) {
-              callback(edge++, adjacent_node, edge_weight);
-            } else {
-              stop = callback(edge++, adjacent_node, edge_weight);
-              return stop;
-            }
-          });
+          decoder.decode(
+              reinterpret_cast<NodeID *>(neighborhood_buffer.data() + (edge - first_edge))
+          );
         } else {
           StreamVByteGapDecoder decoder(num_remaining_gaps, node_data);
-          decoder.decode([&](const NodeID adjacent_node) {
-            if constexpr (kNonStoppable) {
-              callback(edge++, adjacent_node);
-            } else {
-              stop = callback(edge++, adjacent_node);
-              return stop;
-            }
-          });
+          decoder.decode(
+              reinterpret_cast<NodeID *>(neighborhood_buffer.data() + (edge - first_edge))
+          );
         }
 
-        return stop;
+        return;
       }
     }
 
@@ -775,8 +860,6 @@ private:
       prev_adjacent_node = adjacent_node;
       edge += 1;
     }
-
-    return false;
   }
 
 private:
@@ -794,6 +877,18 @@ private:
   std::size_t _num_high_degree_parts;
   std::size_t _num_interval_nodes;
   std::size_t _num_intervals;
+
+  mutable tbb::enumerable_thread_specific<NeighborhoodBuffer> _neighborhood_buffer_ets{[] {
+    NeighborhoodBuffer buffer;
+    buffer.reserve(kHighDegreeThreshold + 3);
+    return buffer;
+  }};
+  mutable tbb::enumerable_thread_specific<WeightedNeighborhoodBuffer>
+      _weighted_neighborhood_buffer_ets{[] {
+        WeightedNeighborhoodBuffer buffer;
+        buffer.reserve((kHighDegreeThreshold + 3) * 2);
+        return buffer;
+      }};
 };
 
 } // namespace kaminpar
