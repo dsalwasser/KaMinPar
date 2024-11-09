@@ -22,6 +22,7 @@
 #define KAMINPAR_VERSION_PATCH 0
 
 namespace kaminpar {
+
 enum class OutputLevel : std::uint8_t {
   QUIET,       //! Disable all output to stdout.
   PROGRESS,    //! Continuously output progress information while partitioning.
@@ -29,6 +30,7 @@ enum class OutputLevel : std::uint8_t {
   EXPERIMENT,  //! Also output information only relevant for benchmarking.
   DEBUG,       //! Also output (a sane amount) of debug information.
 };
+
 } // namespace kaminpar
 
 namespace kaminpar::shm {
@@ -90,7 +92,6 @@ enum class CoarseningAlgorithm {
 enum class ClusteringAlgorithm {
   NOOP,
   LABEL_PROPAGATION,
-  LEGACY_LABEL_PROPAGATION,
 };
 
 enum class ClusterWeightLimit {
@@ -212,7 +213,6 @@ struct CoarseningContext {
 
 enum class RefinementAlgorithm {
   LABEL_PROPAGATION,
-  LEGACY_LABEL_PROPAGATION,
   KWAY_FM,
   GREEDY_BALANCER,
   JET,
@@ -482,22 +482,26 @@ struct Context {
 //
 
 namespace kaminpar::shm {
+
 std::unordered_set<std::string> get_preset_names();
+
 Context create_context_by_preset_name(const std::string &name);
 
 Context create_default_context();
 Context create_fast_context();
 Context create_strong_context();
 
-Context create_largek_context();
-Context create_fast_largek_context();
-Context create_strong_largek_context();
+Context create_terapart_context();
+Context create_terapart_strong_context();
+Context create_terapart_largek_context();
 
-Context create_memory_context();
-Context create_strong_memory_context();
+Context create_largek_context();
+Context create_largek_fast_context();
+Context create_largek_strong_context();
 
 Context create_jet_context(int rounds = 1);
 Context create_noref_context();
+
 } // namespace kaminpar::shm
 
 //
@@ -505,6 +509,7 @@ Context create_noref_context();
 //
 
 namespace kaminpar {
+
 class KaMinPar {
 public:
   KaMinPar(int num_threads, shm::Context ctx);
@@ -598,7 +603,10 @@ public:
    *
    * @return The edge-cut of the partition.
    */
-  shm::EdgeWeight compute_partition(shm::BlockID k, shm::BlockID *partition);
+  shm::EdgeWeight
+  compute_partition(shm::BlockID k, shm::BlockID *partition, bool use_initial_node_ordering = true);
+
+  const shm::Graph *graph();
 
 private:
   int _num_threads;
@@ -612,4 +620,5 @@ private:
 
   bool _was_rearranged = false;
 };
+
 } // namespace kaminpar

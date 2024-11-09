@@ -13,7 +13,6 @@
 
 #include "kaminpar-shm/kaminpar.h"
 
-#include "kaminpar-common/asserting_cast.h"
 #include "kaminpar-common/console_io.h"
 #include "kaminpar-common/random.h"
 #include "kaminpar-common/strutils.h"
@@ -88,7 +87,6 @@ std::unordered_map<std::string, ClusteringAlgorithm> get_clustering_algorithms()
   return {
       {"noop", ClusteringAlgorithm::NOOP},
       {"lp", ClusteringAlgorithm::LABEL_PROPAGATION},
-      {"legacy-lp", ClusteringAlgorithm::LEGACY_LABEL_PROPAGATION},
   };
 }
 
@@ -98,8 +96,6 @@ std::ostream &operator<<(std::ostream &out, const ClusteringAlgorithm algorithm)
     return out << "noop";
   case ClusteringAlgorithm::LABEL_PROPAGATION:
     return out << "lp";
-  case ClusteringAlgorithm::LEGACY_LABEL_PROPAGATION:
-    return out << "legacy-lp";
   }
 
   return out << "<invalid>";
@@ -152,7 +148,6 @@ std::unordered_map<std::string, RefinementAlgorithm> get_kway_refinement_algorit
   return {
       {"noop", RefinementAlgorithm::NOOP},
       {"lp", RefinementAlgorithm::LABEL_PROPAGATION},
-      {"legacy-lp", RefinementAlgorithm::LEGACY_LABEL_PROPAGATION},
       {"fm", RefinementAlgorithm::KWAY_FM},
       {"jet", RefinementAlgorithm::JET},
       {"greedy-balancer", RefinementAlgorithm::GREEDY_BALANCER},
@@ -168,8 +163,6 @@ std::ostream &operator<<(std::ostream &out, const RefinementAlgorithm algorithm)
     return out << "fm";
   case RefinementAlgorithm::LABEL_PROPAGATION:
     return out << "lp";
-  case RefinementAlgorithm::LEGACY_LABEL_PROPAGATION:
-    return out << "legacy-lp";
   case RefinementAlgorithm::GREEDY_BALANCER:
     return out << "greedy-balancer";
   case RefinementAlgorithm::JET:
@@ -486,8 +479,7 @@ void print(const CoarseningContext &c_ctx, std::ostream &out) {
     out << "  Max mem-free level:         " << c_ctx.clustering.max_mem_free_coarsening_level
         << "\n";
     out << "  Clustering algorithm:       " << c_ctx.clustering.algorithm << "\n";
-    if (c_ctx.clustering.algorithm == ClusteringAlgorithm::LABEL_PROPAGATION ||
-        c_ctx.clustering.algorithm == ClusteringAlgorithm::LEGACY_LABEL_PROPAGATION) {
+    if (c_ctx.clustering.algorithm == ClusteringAlgorithm::LABEL_PROPAGATION) {
       print(c_ctx.clustering.lp, out);
     }
     out << "  Forced hierarchy levels:    " << (c_ctx.clustering.forced_kc_level ? "+kC " : "")
@@ -574,13 +566,13 @@ void print(const PartitionContext &p_ctx, std::ostream &out) {
   const std::size_t width = size > 0 ? std::ceil(std::log10(size)) : 1;
 
   out << "  Number of nodes:            " << std::setw(width) << p_ctx.n;
-  if (asserting_cast<NodeWeight>(p_ctx.n) == p_ctx.total_node_weight) {
+  if (static_cast<NodeWeight>(p_ctx.n) == p_ctx.total_node_weight) {
     out << " (unweighted)\n";
   } else {
     out << " (total weight: " << p_ctx.total_node_weight << ")\n";
   }
   out << "  Number of edges:            " << std::setw(width) << p_ctx.m;
-  if (asserting_cast<EdgeWeight>(p_ctx.m) == p_ctx.total_edge_weight) {
+  if (static_cast<EdgeWeight>(p_ctx.m) == p_ctx.total_edge_weight) {
     out << " (unweighted)\n";
   } else {
     out << " (total weight: " << p_ctx.total_edge_weight << ")\n";

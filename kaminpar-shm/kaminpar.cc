@@ -21,9 +21,11 @@
 #include "kaminpar-common/timer.h"
 
 namespace kaminpar {
+
 using namespace shm;
 
 namespace {
+
 void print_statistics(
     const Context &ctx,
     const PartitionedGraph &p_graph,
@@ -75,6 +77,7 @@ void print_statistics(
     LOG << logger::RED << "  Feasible:         no";
   }
 }
+
 } // namespace
 
 KaMinPar::KaMinPar(const int num_threads, Context ctx)
@@ -173,7 +176,13 @@ void KaMinPar::reseed(int seed) {
   Random::reseed(seed);
 }
 
-EdgeWeight KaMinPar::compute_partition(const BlockID k, BlockID *partition) {
+EdgeWeight KaMinPar::compute_partition(
+    const BlockID k, BlockID *partition, const bool use_initial_node_ordering
+) {
+  if (_output_level == OutputLevel::QUIET) {
+    Logger::set_quiet_mode(true);
+  }
+
   cio::print_kaminpar_banner();
   cio::print_build_identifier();
   cio::print_build_datatypes<NodeID, EdgeID, NodeWeight, EdgeWeight>();
@@ -249,7 +258,7 @@ EdgeWeight KaMinPar::compute_partition(const BlockID k, BlockID *partition) {
   STOP_HEAP_PROFILER();
 
   START_TIMER("IO");
-  if (_graph_ptr->permuted()) {
+  if (_graph_ptr->permuted() && use_initial_node_ordering) {
     tbb::parallel_for<NodeID>(0, p_graph.n(), [&](const NodeID u) {
       partition[u] = p_graph.block(_graph_ptr->map_original_node(u));
     });
@@ -274,4 +283,9 @@ EdgeWeight KaMinPar::compute_partition(const BlockID k, BlockID *partition) {
 
   return final_cut;
 }
+
+const shm::Graph *KaMinPar::graph() {
+  return _graph_ptr.get();
+}
+
 } // namespace kaminpar
