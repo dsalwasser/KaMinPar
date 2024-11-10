@@ -17,6 +17,8 @@
 #include <immintrin.h>
 #endif
 
+#include "kaminpar-common/math.h"
+
 namespace kaminpar {
 
 /*!
@@ -25,7 +27,7 @@ namespace kaminpar {
  * @tparam Int The type of integer whose encoded maximum length is returned.
  */
 template <typename Int> [[nodiscard]] constexpr std::size_t varint_max_length() {
-  return (sizeof(Int) * 8) / 7 + 1;
+  return sizeof(Int) * 2;
 }
 
 /*!
@@ -35,15 +37,8 @@ template <typename Int> [[nodiscard]] constexpr std::size_t varint_max_length() 
  * @param Int The integer to store.
  * @return The number of bytes the integer needs to be stored.
  */
-template <typename Int> [[nodiscard]] std::size_t varint_length(Int i) {
-  std::size_t len = 1;
-
-  while (i > 0b01111111) {
-    i >>= 7;
-    len++;
-  }
-
-  return len;
+template <typename Int> [[nodiscard]] std::size_t varint_length([[maybe_unused]] Int i) {
+  return sizeof(Int) * 2;
 }
 
 /*!
@@ -55,21 +50,8 @@ template <typename Int> [[nodiscard]] std::size_t varint_length(Int i) {
  * @return The number of bytes that the integer occupies at the memory location.
  */
 template <typename Int> std::size_t varint_encode(Int i, std::uint8_t *ptr) {
-  std::size_t len = 1;
-
-  while (i > 0b01111111) {
-    const std::uint8_t octet = (i & 0b01111111) | 0b10000000;
-    *ptr = octet;
-
-    i >>= 7;
-    ptr += 1;
-    len += 1;
-  }
-
-  const std::uint8_t last_octet = i & 0b01111111;
-  *ptr = last_octet;
-
-  return len;
+  *reinterpret_cast<Int *>(ptr) = i;
+  return sizeof(Int);
 }
 
 /*!
@@ -81,17 +63,8 @@ template <typename Int> std::size_t varint_encode(Int i, std::uint8_t *ptr) {
  * incremented accordingly.
  */
 template <typename Int> void varint_encode(Int i, std::uint8_t **ptr) {
-  while (i > 0b01111111) {
-    const std::uint8_t octet = (i & 0b01111111) | 0b10000000;
-    **ptr = octet;
-
-    i >>= 7;
-    *ptr += 1;
-  }
-
-  const std::uint8_t last_octet = i & 0b01111111;
-  **ptr = last_octet;
-  *ptr += 1;
+  *reinterpret_cast<Int *>(*ptr) = i;
+  *ptr += sizeof(Int);
 }
 
 /*!
@@ -102,24 +75,7 @@ template <typename Int> void varint_encode(Int i, std::uint8_t **ptr) {
  * @return The decoded integer.
  */
 template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t *data) {
-  Int value = 0;
-
-  Int shift = 0;
-  while (true) {
-    const std::uint8_t byte = *data;
-
-    if ((byte & 0b10000000) == 0) {
-      value |= static_cast<Int>(byte) << shift;
-      break;
-    } else {
-      value |= static_cast<Int>(byte & 0b01111111) << shift;
-    }
-
-    shift += 7;
-    data += 1;
-  }
-
-  return value;
+  return *reinterpret_cast<const Int *>(data);
 }
 
 /*!
@@ -131,24 +87,9 @@ template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t *data
  * @return The decoded integer.
  */
 template <typename Int> [[nodiscard]] Int varint_decode_loop(const std::uint8_t **data) {
-  Int value = 0;
-
-  Int shift = 0;
-  while (true) {
-    const std::uint8_t octet = **data;
-    *data += 1;
-
-    if ((octet & 0b10000000) == 0) {
-      value |= static_cast<Int>(octet) << shift;
-      break;
-    } else {
-      value |= static_cast<Int>(octet & 0b01111111) << shift;
-    }
-
-    shift += 7;
-  }
-
-  return value;
+  const Int i = *reinterpret_cast<const Int *>(*data);
+  *data += sizeof(Int);
+  return i;
 }
 
 /*!
@@ -160,116 +101,9 @@ template <typename Int> [[nodiscard]] Int varint_decode_loop(const std::uint8_t 
  * @return The decoded integer.
  */
 template <typename Int> [[nodiscard]] Int varint_decode_pext_unrolled(const std::uint8_t **data) {
-#ifdef KAMINPAR_COMPRESSION_FAST_DECODING
-  if constexpr (sizeof(Int) == 4) {
-    const std::uint8_t *data_ptr = *data;
-    if ((data_ptr[0] & 0b10000000) == 0) {
-      const std::uint32_t result = *data_ptr & 0b01111111;
-      *data += 1;
-      return result;
-    }
-
-    if ((data_ptr[1] & 0b10000000) == 0) {
-      const std::uint32_t result =
-          _pext_u32(*reinterpret_cast<const std::uint32_t *>(data_ptr), 0x7F7F);
-      *data += 2;
-      return result;
-    }
-
-    if ((data_ptr[2] & 0b10000000) == 0) {
-      const std::uint32_t result =
-          _pext_u32(*reinterpret_cast<const std::uint32_t *>(data_ptr), 0x7F7F7F);
-      *data += 3;
-      return result;
-    }
-
-    if ((data_ptr[3] & 0b10000000) == 0) {
-      const std::uint32_t result =
-          _pext_u32(*reinterpret_cast<const std::uint32_t *>(data_ptr), 0x7F7F7F7F);
-      *data += 4;
-      return result;
-    }
-
-    const std::uint32_t result = static_cast<std::uint32_t>(
-        _pext_u64(*reinterpret_cast<const std::uint64_t *>(data_ptr), 0x7F7F7F7F7F)
-    );
-    *data += 5;
-    return result;
-  } else if constexpr (sizeof(Int) == 8) {
-    const std::uint8_t *data_ptr = *data;
-    if ((data_ptr[0] & 0b10000000) == 0) {
-      const std::uint64_t result = *data_ptr & 0b01111111;
-      *data += 1;
-      return result;
-    }
-
-    if ((data_ptr[1] & 0b10000000) == 0) {
-      const std::uint64_t result =
-          _pext_u32(*reinterpret_cast<const std::uint32_t *>(data_ptr), 0x7F7F);
-      *data += 2;
-      return result;
-    }
-
-    if ((data_ptr[2] & 0b10000000) == 0) {
-      const std::uint64_t result =
-          _pext_u32(*reinterpret_cast<const std::uint32_t *>(data_ptr), 0x7F7F7F);
-      *data += 3;
-      return result;
-    }
-
-    if ((data_ptr[3] & 0b10000000) == 0) {
-      const std::uint64_t result =
-          _pext_u32(*reinterpret_cast<const std::uint32_t *>(data_ptr), 0x7F7F7F7F);
-      *data += 4;
-      return result;
-    }
-
-    if ((data_ptr[4] & 0b10000000) == 0) {
-      const std::uint64_t result =
-          _pext_u64(*reinterpret_cast<const std::uint64_t *>(data_ptr), 0x7F7F7F7F7F);
-      *data += 5;
-      return result;
-    }
-
-    if ((data_ptr[5] & 0b10000000) == 0) {
-      const std::uint64_t result =
-          _pext_u64(*reinterpret_cast<const std::uint64_t *>(data_ptr), 0x7F7F7F7F7F7F);
-      *data += 6;
-      return result;
-    }
-
-    if ((data_ptr[6] & 0b10000000) == 0) {
-      const std::uint64_t result =
-          _pext_u64(*reinterpret_cast<const std::uint64_t *>(data_ptr), 0x7F7F7F7F7F7F7F);
-      *data += 7;
-      return result;
-    }
-
-    if ((data_ptr[7] & 0b10000000) == 0) {
-      const std::uint64_t result =
-          _pext_u64(*reinterpret_cast<const std::uint64_t *>(data_ptr), 0x7F7F7F7F7F7F7F7F);
-      *data += 8;
-      return result;
-    }
-
-    if ((data_ptr[8] & 0b10000000) == 0) {
-      const std::uint64_t result =
-          _pext_u64(*reinterpret_cast<const std::uint64_t *>(data_ptr), 0x7F7F7F7F7F7F7F7F) |
-          (static_cast<std::uint64_t>(data_ptr[8] & 0b01111111) << 56);
-      *data += 9;
-      return result;
-    }
-
-    const std::uint64_t result =
-        _pext_u64(*reinterpret_cast<const std::uint64_t *>(data_ptr), 0x7F7F7F7F7F7F7F7F) |
-        (static_cast<std::uint64_t>(data_ptr[8] & 0b01111111) << 56) |
-        (static_cast<std::uint64_t>(data_ptr[9]) << 63);
-    *data += 10;
-    return result;
-  }
-#else
-  return varint_decode_loop<Int>(data);
-#endif
+  const Int i = *reinterpret_cast<const Int *>(*data);
+  *data += sizeof(Int);
+  return i;
 }
 
 /*!
@@ -281,22 +115,9 @@ template <typename Int> [[nodiscard]] Int varint_decode_pext_unrolled(const std:
  * @return The decoded integer.
  */
 template <typename Int> [[nodiscard]] Int varint_decode_pext_branchless(const std::uint8_t **data) {
-#ifdef KAMINPAR_COMPRESSION_FAST_DECODING
-  if constexpr (sizeof(Int) == 4) {
-    const std::uint8_t *data_ptr = *data;
-
-    const std::uint64_t word = *reinterpret_cast<const std::uint64_t *>(data_ptr);
-    const std::uint64_t continuation_bits = ~word & 0x8080808080;
-    const std::uint64_t mask = continuation_bits ^ (continuation_bits - 1);
-    const std::uint64_t length = (std::countr_zero(continuation_bits) + 1) / 8;
-
-    const Int result = _pext_u64(word & mask, 0x7F7F7F7F7F);
-    *data += length;
-    return result;
-  }
-#else
-  return varint_decode_loop<Int>(data);
-#endif
+  const Int i = *reinterpret_cast<const Int *>(*data);
+  *data += sizeof(Int);
+  return i;
 }
 
 /*!
@@ -308,7 +129,9 @@ template <typename Int> [[nodiscard]] Int varint_decode_pext_branchless(const st
  * @return The decoded integer.
  */
 template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t **data) {
-  return varint_decode_pext_unrolled<Int>(data);
+  const Int i = *reinterpret_cast<const Int *>(*data);
+  *data += sizeof(Int);
+  return i;
 }
 
 /*!
@@ -318,15 +141,8 @@ template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t **dat
  * @param Int The integer to store.
  * @return The number of bytes the integer needs to be stored.
  */
-template <typename Int> [[nodiscard]] std::size_t marked_varint_length(Int i) {
-  std::size_t len = 1;
-  i >>= 6;
-
-  if (i > 0) {
-    len += varint_length(i);
-  }
-
-  return len;
+template <typename Int> [[nodiscard]] std::size_t marked_varint_length([[maybe_unused]] Int i) {
+  return sizeof(Int) * 2;
 }
 
 /*!
@@ -338,22 +154,12 @@ template <typename Int> [[nodiscard]] std::size_t marked_varint_length(Int i) {
  * @param ptr The pointer to the memory location to write the integer to.
  */
 template <typename Int> std::size_t marked_varint_encode(Int i, bool marked, std::uint8_t *ptr) {
-  std::uint8_t first_octet = i & 0b00111111;
   if (marked) {
-    first_octet |= 0b01000000;
+    i |= math::kSetMSB<Int>;
   }
 
-  i >>= 6;
-
-  if (i == 0) {
-    *ptr = first_octet;
-    return 1;
-  }
-
-  first_octet |= 0b10000000;
-  *ptr = first_octet;
-
-  return varint_encode<Int>(i, ptr + 1) + 1;
+  *reinterpret_cast<Int *>(ptr) = i;
+  return sizeof(Int);
 }
 
 /*!
@@ -365,24 +171,12 @@ template <typename Int> std::size_t marked_varint_encode(Int i, bool marked, std
  * @param ptr The pointer to the memory location to write the integer to.
  */
 template <typename Int> void marked_varint_encode(Int i, const bool marked, std::uint8_t **ptr) {
-  std::uint8_t first_octet = i & 0b00111111;
   if (marked) {
-    first_octet |= 0b01000000;
+    i |= math::kSetMSB<Int>;
   }
 
-  i >>= 6;
-
-  if (i == 0) {
-    **ptr = first_octet;
-    *ptr += 1;
-    return;
-  }
-
-  first_octet |= 0b10000000;
-  **ptr = first_octet;
-  *ptr += 1;
-
-  varint_encode(i, ptr);
+  *reinterpret_cast<Int *>(*ptr) = i;
+  *ptr += sizeof(Int);
 }
 
 /*!
@@ -394,32 +188,10 @@ template <typename Int> void marked_varint_encode(Int i, const bool marked, std:
  */
 template <typename Int>
 [[nodiscard]] std::pair<Int, bool> marked_varint_decode(const std::uint8_t *ptr) {
-  const std::uint8_t first_octet = *ptr;
-  ptr += 1;
-
-  const bool is_continuation_bit_set = (first_octet & 0b10000000) != 0;
-  const bool is_marked = (first_octet & 0b01000000) != 0;
-
-  Int result = first_octet & 0b00111111;
-  if (is_continuation_bit_set) {
-    Int shift = 6;
-
-    while (true) {
-      const std::uint8_t octet = *ptr;
-      ptr += 1;
-
-      if ((octet & 0b10000000) == 0) {
-        result |= static_cast<Int>(octet) << shift;
-        break;
-      } else {
-        result |= static_cast<Int>(octet & 0b01111111) << shift;
-      }
-
-      shift += 7;
-    }
-  }
-
-  return std::make_pair(result, is_marked);
+  Int i = *reinterpret_cast<const Int *>(ptr);
+  const bool is_marked = math::is_msb_set(i);
+  i &= ~math::kSetMSB<Int>;
+  return std::make_pair(i, is_marked);
 }
 
 /*!
@@ -432,32 +204,11 @@ template <typename Int>
  */
 template <typename Int>
 [[nodiscard]] std::pair<Int, bool> marked_varint_decode(const std::uint8_t **ptr) {
-  const std::uint8_t first_octet = **ptr;
-  *ptr += 1;
-
-  const bool is_continuation_bit_set = (first_octet & 0b10000000) != 0;
-  const bool is_marked = (first_octet & 0b01000000) != 0;
-
-  Int result = first_octet & 0b00111111;
-  if (is_continuation_bit_set) {
-    Int shift = 6;
-
-    while (true) {
-      const std::uint8_t octet = **ptr;
-      *ptr += 1;
-
-      if ((octet & 0b10000000) == 0) {
-        result |= static_cast<Int>(octet) << shift;
-        break;
-      } else {
-        result |= static_cast<Int>(octet & 0b01111111) << shift;
-      }
-
-      shift += 7;
-    }
-  }
-
-  return std::make_pair(result, is_marked);
+  Int i = *reinterpret_cast<const Int *>(*ptr);
+  const bool is_marked = math::is_msb_set(i);
+  i &= ~math::kSetMSB<Int>;
+  *ptr += sizeof(Int);
+  return std::make_pair(i, is_marked);
 }
 
 /*!
