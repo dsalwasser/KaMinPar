@@ -11,7 +11,7 @@
       pkgs = import nixpkgs { inherit system; };
 
       inputs = builtins.attrValues {
-        inherit (pkgs) cmake ninja python3 gcc14 tbb_2021_11 sparsehash mpi numactl pkg-config;
+        inherit (pkgs) cmake ninja python3 gcc14 tbb_2021_11 sparsehash mpi numactl papi pkg-config;
         inherit (pkgs.llvmPackages_19) openmp;
         inherit mt-kahypar;
       };

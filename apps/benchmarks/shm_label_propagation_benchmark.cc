@@ -20,6 +20,7 @@
 #include "kaminpar-common/logger.h"
 #include "kaminpar-common/random.h"
 #include "kaminpar-common/timer.h"
+#include "kaminpar-common/papi.h"
 
 #include "apps/io/shm_io.h"
 
@@ -86,6 +87,7 @@ int main(int argc, char *argv[]) {
   ));
   lp_clustering.set_desired_cluster_count(0);
 
+  PAPI_INIT();
   GLOBAL_TIMER.reset();
 
   ENABLE_HEAP_PROFILER();

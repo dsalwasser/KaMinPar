@@ -23,6 +23,7 @@
 #include "kaminpar-shm/graphutils/permutator.h"
 
 #include "kaminpar-common/heap_profiler.h"
+#include "kaminpar-common/papi.h"
 #include "kaminpar-common/strutils.h"
 #include "kaminpar-common/timer.h"
 
@@ -345,6 +346,7 @@ int main(int argc, char *argv[]) {
   // If available, use huge pages for large allocations
   scalable_allocation_mode(TBBMALLOC_USE_HUGE_PAGES, !app.no_huge_pages);
 
+  PAPI_INIT();
   ENABLE_HEAP_PROFILER();
 
   // Setup the KaMinPar instance

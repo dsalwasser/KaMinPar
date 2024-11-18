@@ -29,6 +29,7 @@ option(KAMINPAR_BUILD_EXPERIMENTAL_FEATURES "Include experimental features in th
 
 # Control how to build
 ######################
+option(KAMINPAR_ENABLE_PAPI "Use PAPI to measure performance counters." OFF)
 option(KAMINPAR_ENABLE_HEAP_PROFILING "Profile and output heap memory usage." OFF)
 option(KAMINPAR_ENABLE_PAGE_PROFILING "Profile pages allocated via mmap." OFF)
 option(KAMINPAR_ENABLE_STATISTICS "Generate and output detailed statistics." OFF)
@@ -277,6 +278,14 @@ message("  dist::{Node, Edge}Weight: ${KAMINPAR_DIST_WEIGHT_STR}")
 ################################################################################
 ## Search and fetch dependencies                                              ##
 ################################################################################
+
+find_package(PkgConfig REQUIRED)
+
+if (KAMINPAR_ENABLE_PAPI)
+    pkg_check_modules(PAPI IMPORTED_TARGET papi)
+    add_library(PAPI ALIAS PkgConfig::PAPI)
+    list(APPEND KAMINPAR_DEFINITIONS "-DKAMINPAR_ENABLE_PAPI")
+endif ()
 
 # Google Sparsehash 
 if (KAMINPAR_BUILD_WITH_SPARSEHASH)
