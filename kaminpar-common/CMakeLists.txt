@@ -26,7 +26,7 @@ find_library(NUMA_LIB numa) # optional
 
 target_link_libraries(kaminpar_common PUBLIC TBB::tbb TBB::tbbmalloc kassert::kassert)
 if (KAMINPAR_ENABLE_PAPI)
-    target_link_libraries(kaminpar_common INTERFACE PAPI)
+    target_link_libraries(kaminpar_common PUBLIC PAPI)
 endif()
 if (KAMINPAR_BUILD_WITH_GROWT)
     target_link_libraries(kaminpar_common PUBLIC growt)
