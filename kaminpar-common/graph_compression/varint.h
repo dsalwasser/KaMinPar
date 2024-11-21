@@ -17,6 +17,8 @@
 #include <immintrin.h>
 #endif
 
+#include "kaminpar-common/inline.h"
+
 namespace kaminpar {
 
 /*!
@@ -101,7 +103,7 @@ template <typename Int> void varint_encode(Int i, std::uint8_t **ptr) {
  * @param ptr A pointer to the memory location to read the integer from.
  * @return The decoded integer.
  */
-template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t *data) {
+template <typename Int> [[nodiscard]] KAMINPAR_INLINE Int varint_decode(const std::uint8_t *data) {
   Int value = 0;
 
   Int shift = 0;
@@ -130,7 +132,7 @@ template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t *data
  * incremented accordingly.
  * @return The decoded integer.
  */
-template <typename Int> [[nodiscard]] Int varint_decode_loop(const std::uint8_t **data) {
+template <typename Int> [[nodiscard]] KAMINPAR_INLINE Int varint_decode_loop(const std::uint8_t **data) {
   Int value = 0;
 
   Int shift = 0;
@@ -159,7 +161,7 @@ template <typename Int> [[nodiscard]] Int varint_decode_loop(const std::uint8_t 
  * incremented accordingly.
  * @return The decoded integer.
  */
-template <typename Int> [[nodiscard]] Int varint_decode_pext_unrolled(const std::uint8_t **data) {
+template <typename Int> [[nodiscard]]KAMINPAR_INLINE Int varint_decode_pext_unrolled(const std::uint8_t **data) {
 #ifdef KAMINPAR_COMPRESSION_FAST_DECODING
   if constexpr (sizeof(Int) == 4) {
     const std::uint8_t *data_ptr = *data;
@@ -280,7 +282,7 @@ template <typename Int> [[nodiscard]] Int varint_decode_pext_unrolled(const std:
  * incremented accordingly.
  * @return The decoded integer.
  */
-template <typename Int> [[nodiscard]] Int varint_decode_pext_branchless(const std::uint8_t **data) {
+template <typename Int> [[nodiscard]] KAMINPAR_INLINE Int varint_decode_pext_branchless(const std::uint8_t **data) {
 #ifdef KAMINPAR_COMPRESSION_FAST_DECODING
   if constexpr (sizeof(Int) == 4) {
     const std::uint8_t *data_ptr = *data;
@@ -307,7 +309,7 @@ template <typename Int> [[nodiscard]] Int varint_decode_pext_branchless(const st
  * incremented accordingly.
  * @return The decoded integer.
  */
-template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t **data) {
+template <typename Int> [[nodiscard]] KAMINPAR_INLINE Int varint_decode(const std::uint8_t **data) {
   return varint_decode_pext_unrolled<Int>(data);
 }
 
@@ -393,7 +395,7 @@ template <typename Int> void marked_varint_encode(Int i, const bool marked, std:
  * @return A pair consisting of the decoded integer and whether the marker is set.
  */
 template <typename Int>
-[[nodiscard]] std::pair<Int, bool> marked_varint_decode(const std::uint8_t *ptr) {
+[[nodiscard]] std::pair<Int, bool> KAMINPAR_INLINE marked_varint_decode(const std::uint8_t *ptr) {
   const std::uint8_t first_octet = *ptr;
   ptr += 1;
 
@@ -431,7 +433,7 @@ template <typename Int>
  * @return A pair consisting of the decoded integer and whether the markes is set.
  */
 template <typename Int>
-[[nodiscard]] std::pair<Int, bool> marked_varint_decode(const std::uint8_t **ptr) {
+[[nodiscard]] std::pair<Int, bool> KAMINPAR_INLINE marked_varint_decode(const std::uint8_t **ptr) {
   const std::uint8_t first_octet = **ptr;
   *ptr += 1;
 
@@ -522,7 +524,7 @@ template <typename Int> void signed_varint_encode(const Int i, std::uint8_t **pt
  * @param ptr A pointer to the memory location to read the integer from.
  * @return The decoded integer.
  */
-template <typename Int> [[nodiscard]] Int signed_varint_decode(const std::uint8_t *data) {
+template <typename Int> [[nodiscard]] KAMINPAR_INLINE Int signed_varint_decode(const std::uint8_t *data) {
   return zigzag_decode(varint_decode<std::make_unsigned_t<Int>>(data));
 }
 
@@ -534,7 +536,7 @@ template <typename Int> [[nodiscard]] Int signed_varint_decode(const std::uint8_
  * incremented accordingly.
  * @return The decoded integer.
  */
-template <typename Int> [[nodiscard]] Int signed_varint_decode(const std::uint8_t **data) {
+template <typename Int> [[nodiscard]] KAMINPAR_INLINE Int signed_varint_decode(const std::uint8_t **data) {
   return zigzag_decode(varint_decode<std::make_unsigned_t<Int>>(data));
 }
 

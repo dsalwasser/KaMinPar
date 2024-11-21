@@ -12,6 +12,7 @@
 #include "kaminpar-common/datastructures/static_array.h"
 #include "kaminpar-common/graph_compression/streamvbyte.h"
 #include "kaminpar-common/graph_compression/varint.h"
+#include "kaminpar-common/inline.h"
 #include "kaminpar-common/math.h"
 
 #define INVOKE_CALLBACKU(adjacent_node)                                                            \
@@ -512,7 +513,7 @@ private:
   }
 
   template <bool kHasEdgeWeights, typename Callback>
-  bool decode_edges(
+  KAMINPAR_INLINE bool decode_edges(
       const std::uint8_t *node_data,
       const NodeID node,
       const NodeID degree,
