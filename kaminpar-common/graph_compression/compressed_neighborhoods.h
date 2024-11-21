@@ -435,15 +435,12 @@ private:
       return;
     }
 
-    NodeID degree;
-    bool has_intervals;
-    if constexpr (kIntervalEncoding) {
-      const auto header = marked_varint_decode<NodeID>(&node_data);
-      degree = header.first;
-      has_intervals = header.second;
-    } else {
-      degree = varint_decode<NodeID>(&node_data);
-    }
+#ifdef KAMINPAR_COMPRESSION_INTERVAL_ENCODING
+    const auto [degree, has_intervals] = marked_varint_decode<NodeID>(&node_data);
+#else
+    const NodeID degree = varint_decode<NodeID>(&node_data);
+    const bool has_intervals = false;
+#endif
 
     if constexpr (kHighDegreeEncoding) {
       const bool split_neighbourhood = degree >= kHighDegreeThreshold;

@@ -17,6 +17,8 @@
 #include <immintrin.h>
 #endif
 
+#include "kaminpar-common/math.h"
+
 namespace kaminpar {
 
 /*!
@@ -36,14 +38,12 @@ template <typename Int> [[nodiscard]] constexpr std::size_t varint_max_length() 
  * @return The number of bytes the integer needs to be stored.
  */
 template <typename Int> [[nodiscard]] std::size_t varint_length(Int i) {
-  std::size_t len = 1;
-
-  while (i > 0b01111111) {
-    i >>= 7;
-    len++;
+  const bool single_byte = (i & ~static_cast<Int>(0b11111)) == 0;
+  if (single_byte) {
+    return 1;
   }
 
-  return len;
+  return 1 + math::div_ceil(std::bit_width(i >> 5), 8);
 }
 
 /*!
@@ -55,21 +55,11 @@ template <typename Int> [[nodiscard]] std::size_t varint_length(Int i) {
  * @return The number of bytes that the integer occupies at the memory location.
  */
 template <typename Int> std::size_t varint_encode(Int i, std::uint8_t *ptr) {
-  std::size_t len = 1;
+  const std::size_t length = varint_length(i);
+  const std::uint64_t vbyte = (i << 3) | (length - 1);
 
-  while (i > 0b01111111) {
-    const std::uint8_t octet = (i & 0b01111111) | 0b10000000;
-    *ptr = octet;
-
-    i >>= 7;
-    ptr += 1;
-    len += 1;
-  }
-
-  const std::uint8_t last_octet = i & 0b01111111;
-  *ptr = last_octet;
-
-  return len;
+  *reinterpret_cast<std::uint64_t *>(ptr) = vbyte;
+  return length;
 }
 
 /*!
@@ -81,17 +71,11 @@ template <typename Int> std::size_t varint_encode(Int i, std::uint8_t *ptr) {
  * incremented accordingly.
  */
 template <typename Int> void varint_encode(Int i, std::uint8_t **ptr) {
-  while (i > 0b01111111) {
-    const std::uint8_t octet = (i & 0b01111111) | 0b10000000;
-    **ptr = octet;
+  const std::size_t length = varint_length(i);
+  const std::uint64_t vbyte = (i << 3) | (length - 1);
 
-    i >>= 7;
-    *ptr += 1;
-  }
-
-  const std::uint8_t last_octet = i & 0b01111111;
-  **ptr = last_octet;
-  *ptr += 1;
+  *reinterpret_cast<std::uint64_t *>(*ptr) = vbyte;
+  *ptr += length;
 }
 
 /*!
@@ -102,24 +86,15 @@ template <typename Int> void varint_encode(Int i, std::uint8_t **ptr) {
  * @return The decoded integer.
  */
 template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t *data) {
-  Int value = 0;
+  const std::uint64_t vbyte = *reinterpret_cast<const std::uint64_t *>(data);
+  const std::uint64_t header_bits = vbyte & 0b111;
 
-  Int shift = 0;
-  while (true) {
-    const std::uint8_t byte = *data;
+  static constexpr std::uint64_t kLookupTable[] = {
+      0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFFFFFF
+  };
+  const std::uint64_t mask = kLookupTable[header_bits];
 
-    if ((byte & 0b10000000) == 0) {
-      value |= static_cast<Int>(byte) << shift;
-      break;
-    } else {
-      value |= static_cast<Int>(byte & 0b01111111) << shift;
-    }
-
-    shift += 7;
-    data += 1;
-  }
-
-  return value;
+  return (vbyte & mask) >> 3;
 }
 
 /*!
@@ -131,24 +106,18 @@ template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t *data
  * @return The decoded integer.
  */
 template <typename Int> [[nodiscard]] Int varint_decode_loop(const std::uint8_t **data) {
-  Int value = 0;
+  const std::uint64_t vbyte = *reinterpret_cast<const std::uint64_t *>(*data);
+  const std::uint64_t header_bits = vbyte & 0b111;
 
-  Int shift = 0;
-  while (true) {
-    const std::uint8_t octet = **data;
-    *data += 1;
+  static constexpr std::uint64_t kLookupTable[] = {
+      0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFFFFFF
+  };
+  const std::uint64_t mask = kLookupTable[header_bits];
 
-    if ((octet & 0b10000000) == 0) {
-      value |= static_cast<Int>(octet) << shift;
-      break;
-    } else {
-      value |= static_cast<Int>(octet & 0b01111111) << shift;
-    }
+  const std::uint64_t length = header_bits + 1;
+  *data += length;
 
-    shift += 7;
-  }
-
-  return value;
+  return (vbyte & mask) >> 3;
 }
 
 /*!
