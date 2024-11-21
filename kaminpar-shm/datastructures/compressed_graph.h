@@ -158,7 +158,7 @@ public:
   // Graph operations
   //
 
-  template <typename Lambda> inline void adjacent_nodes(const NodeID u, Lambda &&l) const {
+  template <typename Lambda> KAMINPAR_INLINE void adjacent_nodes(const NodeID u, Lambda &&l) const {
     constexpr bool kDontDecodeEdgeWeights = std::is_invocable_v<Lambda, NodeID>;
     constexpr bool kDecodeEdgeWeights = std::is_invocable_v<Lambda, NodeID, EdgeWeight>;
     static_assert(kDontDecodeEdgeWeights || kDecodeEdgeWeights);

@@ -251,7 +251,8 @@ public:
    * @param node The node whose adjacent nodes are to be decoded.
    * @param callback The function to invoke with each adjacent node.
    */
-  template <typename Callback> void adjacent_nodes(const NodeID node, Callback &&callback) const {
+  template <typename Callback>
+  KAMINPAR_INLINE void adjacent_nodes(const NodeID node, Callback &&callback) const {
     decode_adjacent_nodes<false>(node, std::forward<Callback>(callback));
   }
 
@@ -407,7 +408,7 @@ public:
 
 private:
   template <bool kParallel, typename Callback>
-  void decode_adjacent_nodes(const NodeID node, Callback &&callback) const {
+  KAMINPAR_INLINE void decode_adjacent_nodes(const NodeID node, Callback &&callback) const {
     constexpr bool kInvokeDirectly = std::is_invocable_v<Callback, NodeID, EdgeWeight>;
 
     if (_has_edge_weights) [[unlikely]] {
@@ -428,7 +429,7 @@ private:
   }
 
   template <bool kHasEdgeWeights, bool kInvokeDirectly, bool kParallel, typename Callback>
-  void decode(const NodeID node, Callback &&callback) const {
+  KAMINPAR_INLINE void decode(const NodeID node, Callback &&callback) const {
     const std::uint8_t *data = _compressed_edges.data();
     const std::uint8_t *node_data = data + _nodes[node];
     const std::uint8_t *next_node_data = data + _nodes[node + 1];
