@@ -18,16 +18,24 @@
 
 #include "kaminpar-common/console_io.h"
 #include "kaminpar-common/logger.h"
+#include "kaminpar-common/papi.h"
 #include "kaminpar-common/random.h"
 #include "kaminpar-common/timer.h"
-#include "kaminpar-common/papi.h"
 
 #include "apps/io/shm_io.h"
+
+#ifdef KAMINPAR_ENABLE_TRACY
+#include <tracy/Tracy.hpp>
+#endif
 
 using namespace kaminpar;
 using namespace kaminpar::shm;
 
 int main(int argc, char *argv[]) {
+#ifdef KAMINPAR_ENABLE_TRACY
+  TracyNoop;
+#endif
+
   // Create context
   Context ctx = create_default_context();
 

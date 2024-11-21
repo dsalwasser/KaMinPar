@@ -10,3 +10,6 @@
 [submodule "external/bakward-mpi"]
 	path = external/bakward-mpi
 	url = https://github.com/kamping-site/bakward-mpi.git
+[submodule "external/tracy"]
+	path = external/tracy
+	url = https://github.com/wolfpld/tracy.git

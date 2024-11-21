@@ -37,6 +37,10 @@
 #include <sys/resource.h>
 #endif
 
+#ifdef KAMINPAR_ENABLE_TRACY
+#include <tracy/Tracy.hpp>
+#endif
+
 using namespace kaminpar;
 using namespace kaminpar::shm;
 
@@ -315,6 +319,10 @@ inline void print_rss(const ApplicationContext &app) {
 } // namespace
 
 int main(int argc, char *argv[]) {
+#ifdef KAMINPAR_ENABLE_TRACY
+  TracyNoop;
+#endif
+
 #if __has_include(<numa.h>)
   if (numa_available() >= 0) {
     numa_set_interleave_mask(numa_all_nodes_ptr);

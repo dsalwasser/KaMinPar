@@ -29,6 +29,7 @@ option(KAMINPAR_BUILD_EXPERIMENTAL_FEATURES "Include experimental features in th
 
 # Control how to build
 ######################
+option(KAMINPAR_ENABLE_TRACY "Add Tracy Profiler support." OFF)
 option(KAMINPAR_ENABLE_PAPI "Use PAPI to measure performance counters." OFF)
 option(KAMINPAR_ENABLE_HEAP_PROFILING "Profile and output heap memory usage." OFF)
 option(KAMINPAR_ENABLE_PAGE_PROFILING "Profile pages allocated via mmap." OFF)
@@ -285,6 +286,12 @@ if (KAMINPAR_ENABLE_PAPI)
     pkg_check_modules(PAPI IMPORTED_TARGET papi)
     add_library(PAPI ALIAS PkgConfig::PAPI)
     list(APPEND KAMINPAR_DEFINITIONS "-DKAMINPAR_ENABLE_PAPI")
+endif ()
+
+if (KAMINPAR_ENABLE_TRACY)
+    option(TRACY_ENABLE "" ON)
+    add_subdirectory(external/tracy)
+    list(APPEND KAMINPAR_DEFINITIONS "-DKAMINPAR_ENABLE_TRACY")
 endif ()
 
 # Google Sparsehash 
