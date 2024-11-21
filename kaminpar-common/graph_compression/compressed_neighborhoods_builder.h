@@ -78,6 +78,7 @@ public:
     // Store in the last entry of the node array the offset one after the last byte belonging to the
     // last node.
     _nodes.write(_nodes.size() - 1, static_cast<EdgeID>(compressed_edges_size));
+    compressed_edges_size += 7;
 
     // Add an additional 15 bytes to the compressed edge array when stream encoding is enabled to
     // avoid a possible segmentation fault as the stream decoder reads 16-byte chunks.
@@ -227,6 +228,7 @@ public:
     // Store in the last entry of the node array the offset one after the last byte belonging to the
     // last node.
     _nodes.write(_nodes.size() - 1, _compressed_edges_size);
+    _compressed_edges_size += 7;
 
     // Add an additional 15 bytes to the compressed edge array when stream encoding is enabled to
     // avoid a possible segmentation fault as the stream decoder reads 16-byte chunks.

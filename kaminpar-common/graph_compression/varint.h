@@ -288,14 +288,12 @@ template <typename Int> [[nodiscard]] Int varint_decode(const std::uint8_t **dat
  * @return The number of bytes the integer needs to be stored.
  */
 template <typename Int> [[nodiscard]] std::size_t marked_varint_length(Int i) {
-  std::size_t len = 1;
-  i >>= 6;
-
-  if (i > 0) {
-    len += varint_length(i);
+  const bool single_byte = (i & ~static_cast<Int>(0b1111)) == 0;
+  if (single_byte) {
+    return 1;
   }
 
-  return len;
+  return 1 + math::div_ceil(std::bit_width(i >> 4), 8);
 }
 
 /*!
@@ -307,22 +305,11 @@ template <typename Int> [[nodiscard]] std::size_t marked_varint_length(Int i) {
  * @param ptr The pointer to the memory location to write the integer to.
  */
 template <typename Int> std::size_t marked_varint_encode(Int i, bool marked, std::uint8_t *ptr) {
-  std::uint8_t first_octet = i & 0b00111111;
-  if (marked) {
-    first_octet |= 0b01000000;
-  }
+  const std::size_t length = marked_varint_length(i);
+  const std::uint64_t vbyte = (i << 4) | ((length - 1) << 1) | (marked ? 1 : 0);
 
-  i >>= 6;
-
-  if (i == 0) {
-    *ptr = first_octet;
-    return 1;
-  }
-
-  first_octet |= 0b10000000;
-  *ptr = first_octet;
-
-  return varint_encode<Int>(i, ptr + 1) + 1;
+  *reinterpret_cast<std::uint64_t *>(ptr) = vbyte;
+  return length;
 }
 
 /*!
@@ -334,24 +321,11 @@ template <typename Int> std::size_t marked_varint_encode(Int i, bool marked, std
  * @param ptr The pointer to the memory location to write the integer to.
  */
 template <typename Int> void marked_varint_encode(Int i, const bool marked, std::uint8_t **ptr) {
-  std::uint8_t first_octet = i & 0b00111111;
-  if (marked) {
-    first_octet |= 0b01000000;
-  }
+  const std::size_t length = marked_varint_length(i);
+  const std::uint64_t vbyte = (i << 4) | ((length - 1) << 1) | (marked ? 1 : 0);
 
-  i >>= 6;
-
-  if (i == 0) {
-    **ptr = first_octet;
-    *ptr += 1;
-    return;
-  }
-
-  first_octet |= 0b10000000;
-  **ptr = first_octet;
-  *ptr += 1;
-
-  varint_encode(i, ptr);
+  *reinterpret_cast<std::uint64_t *>(*ptr) = vbyte;
+  *ptr += length;
 }
 
 /*!
@@ -362,33 +336,16 @@ template <typename Int> void marked_varint_encode(Int i, const bool marked, std:
  * @return A pair consisting of the decoded integer and whether the marker is set.
  */
 template <typename Int>
-[[nodiscard]] std::pair<Int, bool> marked_varint_decode(const std::uint8_t *ptr) {
-  const std::uint8_t first_octet = *ptr;
-  ptr += 1;
+[[nodiscard]] std::pair<Int, bool> marked_varint_decode(const std::uint8_t *data) {
+  const std::uint64_t vbyte = *reinterpret_cast<const std::uint64_t *>(data);
+  const std::uint64_t header_bits = (vbyte >> 1) & 0b111;
 
-  const bool is_continuation_bit_set = (first_octet & 0b10000000) != 0;
-  const bool is_marked = (first_octet & 0b01000000) != 0;
+  static constexpr std::uint64_t kLookupTable[] = {
+      0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFFFFFF
+  };
+  const std::uint64_t mask = kLookupTable[header_bits];
 
-  Int result = first_octet & 0b00111111;
-  if (is_continuation_bit_set) {
-    Int shift = 6;
-
-    while (true) {
-      const std::uint8_t octet = *ptr;
-      ptr += 1;
-
-      if ((octet & 0b10000000) == 0) {
-        result |= static_cast<Int>(octet) << shift;
-        break;
-      } else {
-        result |= static_cast<Int>(octet & 0b01111111) << shift;
-      }
-
-      shift += 7;
-    }
-  }
-
-  return std::make_pair(result, is_marked);
+  return std::make_pair((vbyte & mask) >> 4, (vbyte & 1) != 0);
 }
 
 /*!
@@ -400,33 +357,19 @@ template <typename Int>
  * @return A pair consisting of the decoded integer and whether the markes is set.
  */
 template <typename Int>
-[[nodiscard]] std::pair<Int, bool> marked_varint_decode(const std::uint8_t **ptr) {
-  const std::uint8_t first_octet = **ptr;
-  *ptr += 1;
+[[nodiscard]] std::pair<Int, bool> marked_varint_decode(const std::uint8_t **data) {
+  const std::uint64_t vbyte = *reinterpret_cast<const std::uint64_t *>(*data);
+  const std::uint64_t header_bits = (vbyte >> 1) & 0b111;
 
-  const bool is_continuation_bit_set = (first_octet & 0b10000000) != 0;
-  const bool is_marked = (first_octet & 0b01000000) != 0;
+  static constexpr std::uint64_t kLookupTable[] = {
+      0xFF, 0xFFFF, 0xFFFFFF, 0xFFFFFFFF, 0xFFFFFFFFFF
+  };
+  const std::uint64_t mask = kLookupTable[header_bits];
 
-  Int result = first_octet & 0b00111111;
-  if (is_continuation_bit_set) {
-    Int shift = 6;
+  const std::uint64_t length = header_bits + 1;
+  *data += length;
 
-    while (true) {
-      const std::uint8_t octet = **ptr;
-      *ptr += 1;
-
-      if ((octet & 0b10000000) == 0) {
-        result |= static_cast<Int>(octet) << shift;
-        break;
-      } else {
-        result |= static_cast<Int>(octet & 0b01111111) << shift;
-      }
-
-      shift += 7;
-    }
-  }
-
-  return std::make_pair(result, is_marked);
+  return std::make_pair((vbyte & mask) >> 4, (vbyte & 1) != 0);
 }
 
 /*!
