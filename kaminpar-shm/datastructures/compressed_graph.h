@@ -359,11 +359,11 @@ public:
   // Direct member access -- used for some "low level" operations
   //
 
-  [[nodiscard]] inline CompactStaticArray<EdgeID> &raw_nodes() {
+  [[nodiscard]] inline StaticArray<EdgeID> &raw_nodes() {
     return _compressed_neighborhoods.raw_nodes();
   }
 
-  [[nodiscard]] inline const CompactStaticArray<EdgeID> &raw_nodes() const {
+  [[nodiscard]] inline const StaticArray<EdgeID> &raw_nodes() const {
     return _compressed_neighborhoods.raw_nodes();
   }
 
@@ -375,7 +375,7 @@ public:
     return _node_weights;
   }
 
-  [[nodiscard]] inline CompactStaticArray<EdgeID> &&take_raw_nodes() {
+  [[nodiscard]] inline StaticArray<EdgeID> &&take_raw_nodes() {
     return _compressed_neighborhoods.take_raw_nodes();
   }
 

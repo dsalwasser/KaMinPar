@@ -35,10 +35,7 @@ public:
         _num_edges(num_edges),
         _has_edge_weights(has_edge_weights) {
 
-    const std::size_t max_size = CompressedEdgesBuilder::compressed_edge_array_max_size(
-        num_nodes, num_edges, has_edge_weights
-    );
-    _nodes.resize(math::byte_width(max_size), num_nodes + 1);
+    _nodes.resize(num_nodes + 1);
     _compressed_edges_builder.init(0);
   }
 
@@ -77,7 +74,7 @@ public:
 
     // Store in the last entry of the node array the offset one after the last byte belonging to the
     // last node.
-    _nodes.write(_nodes.size() - 1, static_cast<EdgeID>(compressed_edges_size));
+    _nodes[_nodes.size() - 1] = static_cast<EdgeID>(compressed_edges_size);
 
     // Add an additional 15 bytes to the compressed edge array when stream encoding is enabled to
     // avoid a possible segmentation fault as the stream decoder reads 16-byte chunks.
@@ -111,7 +108,7 @@ public:
    * @return The used memory of the compressed neighborhoods.
    */
   [[nodiscard]] std::size_t currently_used_memory() const {
-    return _nodes.memory_space() + _compressed_edges_builder.size();
+    return _nodes.size() * sizeof(EdgeID) + _compressed_edges_builder.size();
   }
 
   /*!
@@ -124,7 +121,7 @@ public:
   }
 
 private:
-  CompactStaticArray<EdgeID> _nodes;
+  StaticArray<EdgeID> _nodes;
   CompressedEdgesBuilder _compressed_edges_builder;
   EdgeID _num_edges;
   bool _has_edge_weights;
@@ -157,7 +154,7 @@ public:
     const std::size_t max_size = CompressedEdgesBuilder::compressed_edge_array_max_size(
         num_nodes, num_edges, has_edge_weights
     );
-    _nodes.resize(math::byte_width(max_size), num_nodes + 1);
+    _nodes.resize(num_nodes + 1);
     _compressed_edges = heap_profiler::overcommit_memory<std::uint8_t>(max_size);
     _compressed_edges_size = 0;
   }
@@ -170,7 +167,7 @@ public:
    * of the node is stored.
    */
   void add_node(const NodeID node, const EdgeID offset) {
-    _nodes.write(node, offset);
+    _nodes[node] = offset;
   }
 
   /**
@@ -226,7 +223,7 @@ public:
   [[nodiscard]] CompressedNeighborhoods build() {
     // Store in the last entry of the node array the offset one after the last byte belonging to the
     // last node.
-    _nodes.write(_nodes.size() - 1, _compressed_edges_size);
+    _nodes[_nodes.size() - 1] = _compressed_edges_size;
 
     // Add an additional 15 bytes to the compressed edge array when stream encoding is enabled to
     // avoid a possible segmentation fault as the stream decoder reads 16-byte chunks.
@@ -255,7 +252,7 @@ public:
   }
 
 private:
-  CompactStaticArray<EdgeID> _nodes;
+  StaticArray<EdgeID> _nodes;
   heap_profiler::unique_ptr<std::uint8_t> _compressed_edges;
   EdgeID _compressed_edges_size;
 

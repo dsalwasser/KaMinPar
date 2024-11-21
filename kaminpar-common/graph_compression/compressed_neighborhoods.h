@@ -143,7 +143,7 @@ public:
    * @param num_intervals The total number of intervals.
    */
   CompressedNeighborhoods(
-      CompactStaticArray<EdgeID> nodes,
+      StaticArray<EdgeID> nodes,
       StaticArray<std::uint8_t> compressed_edges,
       const NodeID max_degree,
       const EdgeID num_edges,
@@ -329,7 +329,7 @@ public:
    * @return The used memory space in bytes.
    */
   [[nodiscard]] std::size_t memory_space() const {
-    return _nodes.memory_space() + _compressed_edges.size();
+    return _nodes.size() * sizeof(EdgeID) + _compressed_edges.size();
   }
 
   /*!
@@ -373,7 +373,7 @@ public:
    *
    * @return Ownership of the raw node array.
    */
-  [[nodiscard]] CompactStaticArray<EdgeID> &&take_raw_nodes() {
+  [[nodiscard]] StaticArray<EdgeID> &&take_raw_nodes() {
     return std::move(_nodes);
   }
 
@@ -382,7 +382,7 @@ public:
    *
    * @return A reference to the raw node array.
    */
-  [[nodiscard]] CompactStaticArray<EdgeID> &raw_nodes() {
+  [[nodiscard]] StaticArray<EdgeID> &raw_nodes() {
     return _nodes;
   }
 
@@ -391,7 +391,7 @@ public:
    *
    * @return A reference to the raw node array.
    */
-  [[nodiscard]] const CompactStaticArray<EdgeID> &raw_nodes() const {
+  [[nodiscard]] const StaticArray<EdgeID> &raw_nodes() const {
     return _nodes;
   }
 
@@ -609,7 +609,7 @@ private:
   }
 
 private:
-  CompactStaticArray<EdgeID> _nodes;
+  StaticArray<EdgeID> _nodes;
   StaticArray<std::uint8_t> _compressed_edges;
 
   EdgeID _num_edges;

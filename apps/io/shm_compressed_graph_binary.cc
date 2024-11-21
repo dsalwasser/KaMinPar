@@ -121,6 +121,8 @@ static void write_static_array(std::ofstream &out, const StaticArray<T> &static_
 }
 
 void write(const std::string &filename, const CompressedGraph &graph) {
+  __builtin_unreachable(); //@TODO
+  /*
   std::ofstream out(filename, std::ios::binary);
   write_int(out, kMagicNumber);
 
@@ -133,6 +135,7 @@ void write(const std::string &filename, const CompressedGraph &graph) {
   if (graph.is_node_weighted()) {
     write_static_array(out, graph.raw_node_weights());
   }
+  */
 }
 
 template <typename T> static T read_int(std::ifstream &in) {
@@ -278,6 +281,8 @@ template <typename T> static StaticArray<T> read_static_array(std::ifstream &in)
 }
 
 CompressedGraph read(const std::string &filename) {
+  __builtin_unreachable(); //@TODO
+  /*
   std::ifstream in(filename, std::ios::binary);
   if (kMagicNumber != read_int<std::uint64_t>(in)) {
     LOG_ERROR << "The magic number of the file is not correct!";
@@ -311,6 +316,7 @@ CompressedGraph read(const std::string &filename) {
   return CompressedGraph(
       std::move(compressed_neighborhoods), std::move(node_weights), header.use_degree_bucket_order
   );
+  */
 }
 
 bool is_compressed(const std::string &filename) {
