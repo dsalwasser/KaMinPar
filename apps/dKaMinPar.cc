@@ -17,6 +17,7 @@
 
 #include "kaminpar-common/heap_profiler.h"
 #include "kaminpar-common/strutils.h"
+#include "kaminpar-common/papi.h"
 
 #include "apps/io/dist_io.h"
 #include "apps/io/dist_metis_parser.h"
@@ -454,6 +455,8 @@ int main(int argc, char *argv[]) {
   int provided, rank;
   MPI_Init_thread(&argc, &argv, MPI_THREAD_FUNNELED, &provided);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  PAPI_INIT();
 
   CLI::App cli("dKaMinPar: (Somewhat) Minimal Distributed Deep Multilevel "
                "Graph Partitioner");

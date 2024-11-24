@@ -55,6 +55,11 @@
   (kaminpar::mpi::get_comm_rank(MPI_COMM_WORLD) == 0) &&                                           \
       kaminpar::DisposableLogger<false>(std::cout) << kaminpar::logger::CYAN
 
+#undef LLOG_STATS
+#define LLOG_STATS                                                                                 \
+  (kaminpar::mpi::get_comm_rank(MPI_COMM_WORLD) == 0) &&                                           \
+      kaminpar::DisposableLogger<false>(std::cout, "") << kaminpar::logger::CYAN
+
 #define LOG_WARNING_ROOT                                                                           \
   (kaminpar::mpi::get_comm_rank(MPI_COMM_WORLD) == 0) &&                                           \
       kaminpar::DisposableLogger<false>(std::cout) << kaminpar::logger::ORANGE << "[Warning] "

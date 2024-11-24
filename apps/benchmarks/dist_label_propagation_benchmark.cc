@@ -32,6 +32,7 @@
 
 #include "kaminpar-common/console_io.h"
 #include "kaminpar-common/logger.h"
+#include "kaminpar-common/papi.h"
 #include "kaminpar-common/random.h"
 #include "kaminpar-common/strutils.h"
 #include "kaminpar-common/timer.h"
@@ -108,6 +109,8 @@ enum class GraphFileFormat {
 int main(int argc, char *argv[]) {
   MPI_Init(&argc, &argv);
 
+  PAPI_INIT();
+
   Context ctx = create_default_context();
   ctx.partition.k = 64;
 
@@ -120,7 +123,7 @@ int main(int argc, char *argv[]) {
 
   CLI::App app("Distributed-memory LP benchmark");
   app.add_option("-G,--graph", graph_filename)->required();
-  app.add_option("--format", graph_file_format)
+  app.add_option("-f,--format", graph_file_format)
       ->transform(CLI::CheckedTransformer(get_graph_file_formats()).description(""))
       ->description(
           R"(Graph input format.

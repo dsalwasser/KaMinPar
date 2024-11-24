@@ -21,8 +21,15 @@
 #include "kaminpar-common/assert.h"
 #include "kaminpar-common/datastructures/dynamic_map.h"
 #include "kaminpar-common/datastructures/rating_map.h"
+#include "kaminpar-common/logger.h"
+#include "kaminpar-common/papi.h"
 #include "kaminpar-common/parallel/atomic.h"
 #include "kaminpar-common/random.h"
+
+#ifdef KAMINPAR_ENABLE_PAPI
+#include <kaminpar-mpi/wrapper.h>
+#define PAPI_BENCH_LABEL_PROPAGATION
+#endif
 
 namespace kaminpar::dist {
 
@@ -315,6 +322,11 @@ protected:
           .current_cluster_weight = 0,
       };
 
+      PAPI_INIT_THREAD();
+#ifdef PAPI_BENCH_LABEL_PROPAGATION
+      _papi_event_set_ets.local().start();
+#endif
+
       bool is_interface_node = false;
       const auto add_to_rating_map = [&](const NodeID v, const EdgeWeight w) {
         if (derived_accept_neighbor(u, v)) {
@@ -335,6 +347,19 @@ protected:
       } else {
         _graph->adjacent_nodes(u, _max_num_neighbors, add_to_rating_map);
       }
+
+#ifdef PAPI_BENCH_LABEL_PROPAGATION
+      auto &events = _papi_event_set_ets.local();
+      events.stop();
+
+      auto &data = _papi_performance_counter_data.local();
+      data.num_instructions += events.get_counter(papi::EventKind::TOTAL_INSTRUCTIONS);
+      data.num_data_cache_misses += events.get_counter(papi::EventKind::L2_DATA_CACHE_MISS);
+      data.num_instruction_cache_misses +=
+          events.get_counter(papi::EventKind::L2_INSTRUCTION_CACHE_MISS);
+      data.num_branch_misses +=
+          events.get_counter(papi::EventKind::CONDITIONAL_BRANCH_INSTRUCTIONS_MISPREDICTED);
+#endif
 
       if constexpr (Config::kUseActiveSetStrategy) {
         _active[u] = 0;
@@ -876,11 +901,32 @@ protected: // Members
   //! reduction of the edge cut.
   parallel::Atomic<EdgeWeight> _expected_total_gain;
 
+#ifdef PAPI_BENCH_LABEL_PROPAGATION
+  struct PerformanceCounterData {
+    std::size_t num_instructions;
+    std::size_t num_data_cache_misses;
+    std::size_t num_instruction_cache_misses;
+    std::size_t num_branch_misses;
+  };
+  tbb::enumerable_thread_specific<PerformanceCounterData> _papi_performance_counter_data;
+#endif
+
 private:
   NodeID _num_nodes = 0;
   NodeID _num_active_nodes = 0;
   ClusterID _num_clusters = 0;
   ClusterID _prev_num_clusters = 0;
+
+#ifdef PAPI_BENCH_LABEL_PROPAGATION
+  tbb::enumerable_thread_specific<papi::EventSet> _papi_event_set_ets{[&] {
+    return papi::create_event_set({
+        papi::EventKind::TOTAL_INSTRUCTIONS,
+        papi::EventKind::L2_DATA_CACHE_MISS,
+        papi::EventKind::L2_INSTRUCTION_CACHE_MISS,
+        papi::EventKind::CONDITIONAL_BRANCH_INSTRUCTIONS_MISPREDICTED,
+    });
+  }};
+#endif
 };
 
 /*!
@@ -1074,6 +1120,95 @@ protected:
 
       _current_num_clusters -= num_removed_clusters;
     });
+
+#ifdef PAPI_BENCH_LABEL_PROPAGATION
+    std::size_t num_instructions = 0;
+    std::size_t num_data_cache_misses = 0;
+    std::size_t num_instruction_cache_misses = 0;
+    std::size_t num_branch_misses = 0;
+
+    for (const auto &data : Base::_papi_performance_counter_data) {
+      num_instructions += data.num_instructions;
+      num_data_cache_misses += data.num_data_cache_misses;
+      num_instruction_cache_misses += data.num_instruction_cache_misses;
+      num_branch_misses += data.num_branch_misses;
+    }
+    Base::_papi_performance_counter_data.clear();
+
+    const auto gathered_num_instructions =
+        mpi::allgather<std::size_t>(num_instructions, MPI_COMM_WORLD);
+    const auto gathered_num_data_cache_misses =
+        mpi::allgather<std::size_t>(num_data_cache_misses, MPI_COMM_WORLD);
+    const auto gathered_num_instruction_cache_misses =
+        mpi::allgather<std::size_t>(num_instruction_cache_misses, MPI_COMM_WORLD);
+    const auto gathered_num_branch_misses =
+        mpi::allgather<std::size_t>(num_branch_misses, MPI_COMM_WORLD);
+
+    const bool is_root = mpi::get_comm_rank(MPI_COMM_WORLD) == 0;
+
+    if (is_root) {
+      const auto max_stats_value = std::max({
+          *std::max_element(gathered_num_instructions.begin(), gathered_num_instructions.end()),
+          *std::max_element(
+              gathered_num_data_cache_misses.begin(), gathered_num_data_cache_misses.end()
+          ),
+          *std::max_element(
+              gathered_num_instruction_cache_misses.begin(),
+              gathered_num_instruction_cache_misses.end()
+          ),
+          *std::max_element(gathered_num_branch_misses.begin(), gathered_num_branch_misses.end()),
+      });
+      const auto stats_padding = std::to_string(max_stats_value).length();
+      const std::size_t pe_padding = std::to_string(mpi::get_comm_size(MPI_COMM_WORLD)).length();
+
+      const auto pad = [](auto value, const std::size_t width) {
+        std::string str;
+        if constexpr (std::is_same_v<decltype(value), std::string>) {
+          str = std::move(value);
+        } else {
+          str = std::to_string(value);
+        }
+
+        if (str.length() < width) {
+          str = std::string(width - str.length(), ' ') + str;
+        }
+
+        return str;
+      };
+
+      const auto print_stats = [&](const auto &stats) {
+        const auto min_it = std::min_element(stats.begin(), stats.end());
+        const mpi::PEID min_pe = std::distance(stats.begin(), min_it);
+        const std::size_t min = *min_it;
+
+        const auto max_it = std::max_element(stats.begin(), stats.end());
+        const mpi::PEID max_pe = std::distance(stats.begin(), max_it);
+        const std::size_t max = *max_it;
+
+        const auto sum = std::accumulate(stats.begin(), stats.end(), static_cast<std::size_t>(0));
+        const auto mean = sum / stats.size();
+
+        LOG_STATS << "[ " << pad(min_pe, pe_padding) << " : " << pad(min, stats_padding) << " | "
+                  << pad(mean, stats_padding) << " | " << pad(max_pe, pe_padding) << " : "
+                  << pad(max, stats_padding) << " ]";
+      };
+
+      LOG_STATS << "Label Propagation Metrics";
+      LLOG_STATS << " Instructions executed:       ";
+      print_stats(gathered_num_instructions);
+
+      LLOG_STATS << " L2 data cache misses:        ";
+      print_stats(gathered_num_data_cache_misses);
+
+      LLOG_STATS << " L2 instruction cache misses: ";
+      print_stats(gathered_num_instruction_cache_misses);
+
+      LLOG_STATS << " Branch misses:               ";
+      print_stats(gathered_num_branch_misses);
+      LOG;
+    }
+
+#endif
 
     return num_moved_nodes_ets.combine(std::plus{});
   }
