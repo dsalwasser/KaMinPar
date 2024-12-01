@@ -32,6 +32,7 @@
 
 #include "kaminpar-common/console_io.h"
 #include "kaminpar-common/logger.h"
+#include "kaminpar-common/perf.h"
 #include "kaminpar-common/random.h"
 #include "kaminpar-common/strutils.h"
 #include "kaminpar-common/timer.h"
@@ -172,6 +173,7 @@ int main(int argc, char *argv[]) {
 
   mpi::barrier(MPI_COMM_WORLD);
   GLOBAL_TIMER.reset();
+  perf::start();
 
   GlobalLPClusterer clusterer(ctx);
   GlobalNodeWeight max_cluster_weight = shm::compute_max_cluster_weight<GlobalNodeWeight>(
@@ -184,6 +186,7 @@ int main(int argc, char *argv[]) {
 
   // Output statistics
   mpi::barrier(MPI_COMM_WORLD);
+  const std::string perf_output = perf::stop();
   STOP_TIMER();
 
   finalize_distributed_timer(Timer::global(), MPI_COMM_WORLD);
@@ -191,6 +194,8 @@ int main(int argc, char *argv[]) {
     cio::print_delimiter("Result Summary");
     Timer::global().print_human_readable(std::cout);
   });
+
+  SLOG << perf_output;
 
   return MPI_Finalize();
 }
