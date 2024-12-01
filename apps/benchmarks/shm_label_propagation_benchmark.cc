@@ -17,8 +17,11 @@
 #include "kaminpar-shm/graphutils/permutator.h"
 
 #include "kaminpar-common/console_io.h"
+#include "kaminpar-common/heap_profiler.h"
 #include "kaminpar-common/logger.h"
+#include "kaminpar-common/perf.h"
 #include "kaminpar-common/random.h"
+#include "kaminpar-common/strutils.h"
 #include "kaminpar-common/timer.h"
 
 #include "apps/io/shm_io.h"
@@ -63,6 +66,13 @@ int main(int argc, char *argv[]) {
   Graph graph =
       io::read(graph_filename, graph_file_format, ctx.node_ordering, ctx.compression.enabled);
   ctx.setup(graph);
+  ctx.debug.graph_name = str::extract_basename(graph_filename);
+
+  cio::print_kaminpar_banner();
+  cio::print_build_identifier();
+  cio::print_build_datatypes<NodeID, EdgeID, NodeWeight, EdgeWeight>();
+  cio::print_delimiter("Input Summary", '#');
+  print(ctx, std::cout);
 
   const double original_epsilon = ctx.partition.epsilon;
   if (ctx.node_ordering == NodeOrdering::DEGREE_BUCKETS) {
@@ -87,32 +97,24 @@ int main(int argc, char *argv[]) {
   lp_clustering.set_desired_cluster_count(0);
 
   GLOBAL_TIMER.reset();
-
   ENABLE_HEAP_PROFILER();
-  START_HEAP_PROFILER("Allocation");
-  StaticArray<NodeID> clustering(graph.n());
-  STOP_HEAP_PROFILER();
-  START_HEAP_PROFILER("Label Propagation");
-  TIMED_SCOPE("Label Propagation") {
+  perf::start();
+
+  TIMED_SCOPE("Partitioning") {
+    SCOPED_TIMER("Label Propagation");
+    SCOPED_HEAP_PROFILER("Label Propagation");
+
+    StaticArray<NodeID> clustering(graph.n());
     lp_clustering.compute_clustering(clustering, graph, false);
   };
-  STOP_HEAP_PROFILER();
-  DISABLE_HEAP_PROFILER();
 
+  const std::string perf_output = perf::stop();
+  DISABLE_HEAP_PROFILER();
   STOP_TIMER();
 
   if (graph.sorted()) {
     graph::integrate_isolated_nodes(graph, original_epsilon, ctx);
   }
-
-  cio::print_delimiter("Input Summary", '#');
-  std::cout << "Execution mode:               " << ctx.parallel.num_threads << "\n";
-  std::cout << "Seed:                         " << Random::get_seed() << "\n";
-  cio::print_delimiter("Graph Compression", '-');
-  print(ctx.compression, std::cout);
-  cio::print_delimiter("Coarsening", '-');
-  print(ctx.coarsening, std::cout);
-  LOG;
 
   cio::print_delimiter("Result Summary");
   Timer::global().print_human_readable(std::cout);
@@ -121,5 +123,7 @@ int main(int argc, char *argv[]) {
   heap_profiler::HeapProfiler::global().set_experiment_summary_options();
   PRINT_HEAP_PROFILE(std::cout);
 
-  return 0;
+  LOG << perf_output;
+
+  return EXIT_SUCCESS;
 }

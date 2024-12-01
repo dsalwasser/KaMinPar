@@ -23,6 +23,7 @@
 #include "kaminpar-shm/graphutils/permutator.h"
 
 #include "kaminpar-common/heap_profiler.h"
+#include "kaminpar-common/perf.h"
 #include "kaminpar-common/strutils.h"
 #include "kaminpar-common/timer.h"
 
@@ -413,8 +414,10 @@ int main(int argc, char *argv[]) {
   STOP_HEAP_PROFILER();
 
   // Compute partition
+  perf::start();
   partitioner.set_graph(std::move(graph));
   partitioner.compute_partition(app.k, partition.data());
+  LOG << perf::stop();
 
   // Save graph partition
   if (!app.partition_filename.empty()) {

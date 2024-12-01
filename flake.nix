@@ -18,6 +18,7 @@
 
       devShellInputs = builtins.attrValues {
         inherit (pkgs) fish ccache mold-wrapped gdb;
+        inherit (pkgs.linuxPackages_latest) perf;
       };
 
       mt-kahypar = pkgs.stdenv.mkDerivation {
