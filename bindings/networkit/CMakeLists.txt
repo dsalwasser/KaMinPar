@@ -52,7 +52,7 @@ target_link_libraries(nkkaminpar PUBLIC KaMinPar::KaMinPar "${NETWORKIT_LIB}")
 target_include_directories(nkkaminpar PUBLIC "${NETWORKIT_INCLUDE}" "${NETWORKIT_DIR}" "src/")
 
 add_library(KaMinPar::NetworKitKaMinPar ALIAS nkkaminpar)
-install(TARGETS nkkaminpar DESTINATION kaminpar_networkit)
+install(TARGETS nkkaminpar DESTINATION kaminpar_networkit_danielsalwasser)
 
 if(KAMINPAR_PYTHON_INSTALL_TBB)
   install(TARGETS tbb tbbmalloc DESTINATION /tmp/tbb)

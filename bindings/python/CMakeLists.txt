@@ -44,7 +44,7 @@ if(KAMINPAR_PYTHON_64BIT)
 endif()
 
 add_library(KaMinPar::PyKaMinPar ALIAS kaminpar_python)
-install(TARGETS kaminpar_python DESTINATION kaminpar)
+install(TARGETS kaminpar_python DESTINATION kaminpar_danielsalwasser)
 
 if(KAMINPAR_PYTHON_INSTALL_TBB)
   install(TARGETS tbb tbbmalloc DESTINATION /tmp/tbb)
