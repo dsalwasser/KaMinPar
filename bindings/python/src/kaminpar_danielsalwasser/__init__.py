@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from kaminpar.kaminpar_python import (
+from .kaminpar_python import (
     Context,
     Graph,
     GraphFileFormat,
