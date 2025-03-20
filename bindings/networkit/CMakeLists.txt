@@ -42,7 +42,7 @@ set(KAMINPAR_BUILD_WITH_MTUNE_NATIVE OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(KaMinPar)
 
 include(UseCython)
-cython_transpile(src/kaminpar_networkit/nkkaminpar.pyx
+cython_transpile(src/kaminpar_networkit_danielsalwasser/nkkaminpar.pyx
   LANGUAGE CXX
   OUTPUT_VARIABLE nkkaminpar_cpp
 )

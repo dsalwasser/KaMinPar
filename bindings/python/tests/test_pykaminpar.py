@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-import kaminpar
+import kaminpar_danielsalwasser as kaminpar
 
 graphs = [
     ("misc/rgg2d.metis", kaminpar.GraphFileFormat.METIS),

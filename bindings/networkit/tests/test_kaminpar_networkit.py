@@ -1,7 +1,7 @@
 import networkit as nk
 import pytest
 
-import kaminpar_networkit as ka
+import kaminpar_networkit_danielsalwasser as ka
 
 
 @pytest.mark.parametrize(
