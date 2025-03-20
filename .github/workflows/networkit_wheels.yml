@@ -2,7 +2,7 @@ name: Wheel builder for NetworKit bindings
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "ci/test/pypi-publish" ]
   pull_request:
     branches: [ "main" ]
 
@@ -64,7 +64,7 @@ jobs:
 
   publish_networkit_to_testpypi:
     name: Publish KaMinPar NetworKit distribution to TestPyPI
-    if: github.repository_owner == 'KaHIP'
+    if: github.repository_owner == 'dsalwasser'
     needs:
     - build_networkit_wheels
     - build_networkit_sdist
