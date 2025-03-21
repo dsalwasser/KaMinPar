@@ -2,7 +2,7 @@ name: Wheel builder for Python bindings
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "ci/test/macos-runner"]
   pull_request:
     branches: ["main"]
 
