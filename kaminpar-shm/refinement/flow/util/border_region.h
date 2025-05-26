@@ -11,6 +11,8 @@ namespace kaminpar::shm {
 
 class BorderRegion {
 public:
+  BorderRegion() : _block(kInvalidBlockID), _max_weight(0), _cur_weight(0) {};
+
   BorderRegion(BlockID block, NodeWeight max_weight)
       : _block(block),
         _max_weight(max_weight),
@@ -21,6 +23,14 @@ public:
 
   BorderRegion(BorderRegion &&) noexcept = default;
   BorderRegion &operator=(BorderRegion &&) noexcept = default;
+
+  void reset(BlockID block, NodeWeight max_weight) {
+    _block = block;
+    _max_weight = max_weight;
+
+    _cur_weight = 0;
+    _nodes.clear();
+  }
 
   [[nodiscard]] BlockID block() const {
     return _block;
@@ -65,7 +75,7 @@ public:
       _new_nodes.insert(mapping.at(u));
     }
 
-    std::swap(_new_nodes, _new_nodes);
+    std::swap(_nodes, _new_nodes);
   }
 
 private:

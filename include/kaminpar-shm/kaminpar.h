@@ -24,7 +24,7 @@
 #include <tbb/global_control.h>
 
 #define KAMINPAR_VERSION_MAJOR 3
-#define KAMINPAR_VERSION_MINOR 4
+#define KAMINPAR_VERSION_MINOR 5
 #define KAMINPAR_VERSION_PATCH 1
 
 namespace kaminpar::shm {
@@ -207,6 +207,7 @@ struct CoarseningContext {
 
 enum class RefinementAlgorithm {
   NOOP,
+  SEQUENTIAL_GREEDY_BALANCER,
   GREEDY_BALANCER,
   LABEL_PROPAGATION,
   KWAY_FM,
@@ -260,14 +261,25 @@ struct KwayFMRefinementContext {
 
 enum class FlowAlgorithm {
   EDMONDS_KARP,
-  PREFLOW_PUSH,
+  FIFO_PREFLOW_PUSH,
 };
 
-struct PreflowPushContext {
+struct FIFOPreflowPushContext {
   bool global_relabeling_heuristic;
   double global_relabeling_frequency;
+};
+
+struct HighestLevelPreflowPushContext {
+  bool two_phase;
 
   bool gap_heuristic;
+
+  bool global_relabeling_heuristic;
+  double global_relabeling_frequency;
+};
+
+struct PiercingHeuristicContext {
+  bool pierce_all_viable;
 };
 
 struct TwowayFlowRefinementContext {
@@ -275,15 +287,55 @@ struct TwowayFlowRefinementContext {
   NodeID max_border_distance;
 
   FlowAlgorithm flow_algorithm;
-  PreflowPushContext preflow_push;
+  FIFOPreflowPushContext fifo_preflow_push;
+  HighestLevelPreflowPushContext highest_level_preflow_push;
+
+  PiercingHeuristicContext piercing;
+
+  bool unconstrained;
+
+  bool use_whfc;
 
   bool parallel_scheduling;
   std::size_t max_num_rounds;
   double min_round_improvement_factor;
 };
 
+enum class CutAlgorithm {
+  ISOLATING_CUT_HEURISTIC,
+  LABELLING_FUNCTION_HEURISTIC,
+};
+
+struct IsolatingCutHeuristicContext {
+  FlowAlgorithm flow_algorithm;
+  FIFOPreflowPushContext fifo_preflow_push;
+  HighestLevelPreflowPushContext highest_level_preflow_push;
+};
+
+enum class LabellingFunctionInitializationStrategy {
+  ZERO,
+  RANDOM,
+  EXISTING_PARTITION
+};
+
+struct LabellingFunctionHeuristicContext {
+  LabellingFunctionInitializationStrategy initialization_strategy;
+
+  FlowAlgorithm flow_algorithm;
+  FIFOPreflowPushContext fifo_preflow_push;
+  HighestLevelPreflowPushContext highest_level_preflow_push;
+
+  double epsilon;
+  std::size_t max_num_rounds;
+};
+
 struct MultiwayFlowRefinementContext {
+  double border_region_scaling_factor;
   NodeID max_border_distance;
+
+  CutAlgorithm cut_algorithm;
+  IsolatingCutHeuristicContext isolating_cut_heuristic;
+  LabellingFunctionHeuristicContext labelling_function_heuristic;
 };
 
 struct JetRefinementContext {
@@ -399,6 +451,10 @@ struct PartitionContext {
 
   [[nodiscard]] BlockWeight perfectly_balanced_block_weight(const BlockID block) const {
     return std::ceil(1.0 * _unrelaxed_max_block_weights[block] / (1 + inferred_epsilon()));
+  }
+
+  [[nodiscard]] std::span<const BlockWeight> max_block_weights() const {
+    return _max_block_weights;
   }
 
   [[nodiscard]] BlockWeight max_block_weight(const BlockID block) const {
@@ -598,7 +654,8 @@ Context create_esa21_largek_context();
 Context create_esa21_largek_fast_context();
 Context create_esa21_strong_context();
 
-Context create_mtkahypar_kway_coarsening();
+Context create_mtkahypar_kway_context();
+Context create_linear_time_kway_context();
 
 //
 // Graph compression interface

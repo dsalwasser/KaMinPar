@@ -49,6 +49,7 @@
 #define DBG DBGC(true)
 #define IFDBG(x) (kDebug ? (x) : std::decay_t<decltype(x)>())
 #define IF_DBG if constexpr (kDebug)
+#define IF_NOT_DBG if constexpr (!kDebug)
 
 // Macros for general console output
 //
@@ -69,12 +70,6 @@
 #define LOG_LSUCCESS (kaminpar::Logger(std::cout, "") << kaminpar::logger::GREEN)
 #define LOG_WARNING (kaminpar::Logger(std::cout) << kaminpar::logger::ORANGE << "[Warning] ")
 #define LOG_LWARNING (kaminpar::Logger(std::cout, "") << kaminpar::logger::ORANGE)
-
-// V(x) prints x<space><value of x><space>, e.g., use LOG << V(a) << V(b) <<
-// V(c); to quickly print the values of variables a, b, c C(x, y) prints [<value
-// of x> --> <value of y>]
-#define V(x) std::string(#x "=") << (x) << " "
-#define C(x, y) "[" << (x) << " --> " << (y) << "] "
 
 // Macros for statistics
 //

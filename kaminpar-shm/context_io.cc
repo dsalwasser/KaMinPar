@@ -271,6 +271,8 @@ std::ostream &operator<<(std::ostream &out, const RefinementAlgorithm algorithm)
   switch (algorithm) {
   case RefinementAlgorithm::NOOP:
     return out << "noop";
+  case RefinementAlgorithm::SEQUENTIAL_GREEDY_BALANCER:
+    return out << "sequential-greedy-balancer";
   case RefinementAlgorithm::GREEDY_BALANCER:
     return out << "greedy-balancer";
   case RefinementAlgorithm::LABEL_PROPAGATION:
@@ -293,6 +295,7 @@ std::ostream &operator<<(std::ostream &out, const RefinementAlgorithm algorithm)
 std::unordered_map<std::string, RefinementAlgorithm> get_refinement_algorithms() {
   return {
       {"noop", RefinementAlgorithm::NOOP},
+      {"sequential-greedy-balancer", RefinementAlgorithm::SEQUENTIAL_GREEDY_BALANCER},
       {"greedy-balancer", RefinementAlgorithm::GREEDY_BALANCER},
       {"lp", RefinementAlgorithm::LABEL_PROPAGATION},
       {"fm", RefinementAlgorithm::KWAY_FM},
@@ -346,8 +349,8 @@ std::ostream &operator<<(std::ostream &out, FlowAlgorithm algorithm) {
   switch (algorithm) {
   case FlowAlgorithm::EDMONDS_KARP:
     return out << "edmonds-karp";
-  case FlowAlgorithm::PREFLOW_PUSH:
-    return out << "preflow-push";
+  case FlowAlgorithm::FIFO_PREFLOW_PUSH:
+    return out << "fifo-preflow-push";
   }
 
   return out << "<invalid>";
@@ -356,7 +359,7 @@ std::ostream &operator<<(std::ostream &out, FlowAlgorithm algorithm) {
 std::unordered_map<std::string, FlowAlgorithm> get_flow_algorithms() {
   return {
       {"edmonds-karp", FlowAlgorithm::EDMONDS_KARP},
-      {"preflow-push", FlowAlgorithm::PREFLOW_PUSH},
+      {"fifo-preflow-push", FlowAlgorithm::FIFO_PREFLOW_PUSH},
   };
 }
 
@@ -538,14 +541,16 @@ void print(const RefinementContext &r_ctx, std::ostream &out) {
     out << "  Max border distance:        " << r_ctx.twoway_flow.max_border_distance << "\n";
 
     out << "  Flow algorithm:             " << r_ctx.twoway_flow.flow_algorithm << "\n";
-    if (r_ctx.twoway_flow.flow_algorithm == FlowAlgorithm::PREFLOW_PUSH) {
+    if (r_ctx.twoway_flow.flow_algorithm == FlowAlgorithm::FIFO_PREFLOW_PUSH) {
       out << "    Global relabeling:        "
-          << (r_ctx.twoway_flow.preflow_push.global_relabeling_heuristic ? "yes" : "no") << "\n";
+          << (r_ctx.twoway_flow.fifo_preflow_push.global_relabeling_heuristic ? "yes" : "no")
+          << "\n";
       out << "    Global relabeling freq.:  "
-          << r_ctx.twoway_flow.preflow_push.global_relabeling_frequency << "\n";
-      out << "    Gap heuristic:            "
-          << (r_ctx.twoway_flow.preflow_push.gap_heuristic ? "yes" : "no") << "\n";
+          << r_ctx.twoway_flow.fifo_preflow_push.global_relabeling_frequency << "\n";
     }
+
+    out << "  Unconstrained:              " << (r_ctx.twoway_flow.unconstrained ? "yes" : "no")
+        << "\n";
 
     out << "  Parallel scheduling:        "
         << (r_ctx.twoway_flow.parallel_scheduling ? "yes" : "no") << "\n";

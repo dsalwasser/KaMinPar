@@ -66,7 +66,9 @@ Context create_context_by_preset_name(const std::string &name) {
   }
 
   if (name == "mtkahypar-kway") {
-    return create_mtkahypar_kway_coarsening();
+    return create_mtkahypar_kway_context();
+  } else if (name == "linear-time-kway") {
+    return create_linear_time_kway_context();
   }
 
   throw std::runtime_error("invalid preset name");
@@ -94,6 +96,7 @@ std::unordered_set<std::string> get_preset_names() {
       "esa21-largek-fast",
       "esa21-strong",
       "mtkahypar-kway",
+      "linear-time-kway",
   };
 }
 
@@ -205,13 +208,26 @@ Context create_default_context() {
                                   {
                                       .border_region_scaling_factor = 16,
                                       .max_border_distance = 2,
-                                      .flow_algorithm = FlowAlgorithm::PREFLOW_PUSH,
-                                      .preflow_push =
+                                      .flow_algorithm = FlowAlgorithm::FIFO_PREFLOW_PUSH,
+                                      .fifo_preflow_push =
                                           {
+
                                               .global_relabeling_heuristic = true,
                                               .global_relabeling_frequency = 1,
-                                              .gap_heuristic = true,
                                           },
+                                      .highest_level_preflow_push =
+                                          {
+                                              .two_phase = true,
+                                              .gap_heuristic = true,
+                                              .global_relabeling_heuristic = true,
+                                              .global_relabeling_frequency = 1,
+                                          },
+                                      .piercing =
+                                          {
+                                              .pierce_all_viable = true,
+                                          },
+                                      .unconstrained = false,
+                                      .use_whfc = false,
                                       .parallel_scheduling = false,
                                       .max_num_rounds = std::numeric_limits<std::size_t>::max(),
                                       .min_round_improvement_factor = 0.01,
@@ -244,13 +260,26 @@ Context create_default_context() {
                           {
                               .border_region_scaling_factor = 16,
                               .max_border_distance = 2,
-                              .flow_algorithm = FlowAlgorithm::PREFLOW_PUSH,
-                              .preflow_push =
+                              .flow_algorithm = FlowAlgorithm::FIFO_PREFLOW_PUSH,
+                              .fifo_preflow_push =
                                   {
+
                                       .global_relabeling_heuristic = true,
                                       .global_relabeling_frequency = 1,
-                                      .gap_heuristic = true,
                                   },
+                              .highest_level_preflow_push =
+                                  {
+                                      .two_phase = true,
+                                      .gap_heuristic = true,
+                                      .global_relabeling_heuristic = true,
+                                      .global_relabeling_frequency = 1,
+                                  },
+                              .piercing =
+                                  {
+                                      .pierce_all_viable = true,
+                                  },
+                              .unconstrained = false,
+                              .use_whfc = false,
                               .parallel_scheduling = false,
                               .max_num_rounds = std::numeric_limits<std::size_t>::max(),
                               .min_round_improvement_factor = 0.01,
@@ -299,20 +328,73 @@ Context create_default_context() {
                   {
                       .border_region_scaling_factor = 16,
                       .max_border_distance = 2,
-                      .flow_algorithm = FlowAlgorithm::PREFLOW_PUSH,
-                      .preflow_push =
+                      .flow_algorithm = FlowAlgorithm::FIFO_PREFLOW_PUSH,
+                      .fifo_preflow_push =
                           {
+
                               .global_relabeling_heuristic = true,
                               .global_relabeling_frequency = 1,
-                              .gap_heuristic = true,
                           },
+                      .highest_level_preflow_push =
+                          {
+                              .two_phase = true,
+                              .gap_heuristic = true,
+                              .global_relabeling_heuristic = true,
+                              .global_relabeling_frequency = 1,
+                          },
+                      .piercing =
+                          {
+                              .pierce_all_viable = true,
+                          },
+                      .unconstrained = false,
+                      .use_whfc = false,
                       .parallel_scheduling = true,
                       .max_num_rounds = std::numeric_limits<std::size_t>::max(),
                       .min_round_improvement_factor = 0.01,
                   },
               .multiway_flow =
                   {
+                      .border_region_scaling_factor = 16,
                       .max_border_distance = 2,
+                      .cut_algorithm = CutAlgorithm::ISOLATING_CUT_HEURISTIC,
+                      .isolating_cut_heuristic =
+                          {
+                              .flow_algorithm = FlowAlgorithm::FIFO_PREFLOW_PUSH,
+                              .fifo_preflow_push =
+                                  {
+
+                                      .global_relabeling_heuristic = true,
+                                      .global_relabeling_frequency = 1,
+                                  },
+                              .highest_level_preflow_push =
+                                  {
+                                      .two_phase = true,
+                                      .gap_heuristic = true,
+                                      .global_relabeling_heuristic = true,
+                                      .global_relabeling_frequency = 1,
+                                  },
+                          },
+                      .labelling_function_heuristic =
+                          {
+                              .initialization_strategy =
+                                  LabellingFunctionInitializationStrategy::ZERO,
+                              .flow_algorithm = FlowAlgorithm::FIFO_PREFLOW_PUSH,
+                              .fifo_preflow_push =
+                                  {
+
+                                      .global_relabeling_heuristic = true,
+                                      .global_relabeling_frequency = 1,
+                                  },
+                              .highest_level_preflow_push =
+                                  {
+                                      .two_phase = true,
+                                      .gap_heuristic = true,
+                                      .global_relabeling_heuristic = true,
+                                      .global_relabeling_frequency = 1,
+                                  },
+                              .epsilon = 0.01,
+                              .max_num_rounds = std::numeric_limits<std::size_t>::max(),
+                          },
                   },
               .jet =
                   {
@@ -339,18 +421,19 @@ Context create_default_context() {
               // Context -> Parallel
               .num_threads = 1,
           },
-      .debug = {
-          .graph_name = "",
-          .dump_graph_filename = "n%n_m%m_k%k_seed%seed.metis",
-          .dump_partition_filename = "n%n_m%m_k%k_seed%seed.part",
+      .debug =
+          {
+              .graph_name = "",
+              .dump_graph_filename = "n%n_m%m_k%k_seed%seed.metis",
+              .dump_partition_filename = "n%n_m%m_k%k_seed%seed.part",
 
-          .dump_toplevel_graph = false,
-          .dump_toplevel_partition = false,
-          .dump_coarsest_graph = false,
-          .dump_coarsest_partition = false,
-          .dump_graph_hierarchy = false,
-          .dump_partition_hierarchy = false,
-      },
+              .dump_toplevel_graph = false,
+              .dump_toplevel_partition = false,
+              .dump_coarsest_graph = false,
+              .dump_coarsest_partition = false,
+              .dump_graph_hierarchy = false,
+              .dump_partition_hierarchy = false,
+          },
   };
 }
 
@@ -534,9 +617,10 @@ Context create_esa21_strong_context() {
   return ctx;
 }
 
-Context create_mtkahypar_kway_coarsening() {
+// Configures the coarsening phase similar to Mt-KaHyPar, plus configures direct k-way initial
+// partitioning instead of deep MGP.
+Context create_mtkahypar_kway_context() {
   Context ctx = create_default_context();
-
   ctx.coarsening.clustering.lp.num_iterations = 1;
   ctx.coarsening.clustering.cluster_weight_limit = ClusterWeightLimit::BLOCK_WEIGHT;
   ctx.coarsening.clustering.cluster_weight_multiplier = 1.0 / 160.0;
@@ -544,7 +628,13 @@ Context create_mtkahypar_kway_coarsening() {
   ctx.coarsening.contraction_limit = 160;
   ctx.coarsening.clustering.lp.two_hop_strategy = TwoHopStrategy::CLUSTER;
   ctx.partitioning.mode = PartitioningMode::KWAY;
+  return ctx;
+}
 
+// Based on Mt-KaHyPar coarsening, uses edge sparsification for worst-case linear-time running time.
+Context create_linear_time_kway_context() {
+  Context ctx = create_mtkahypar_kway_context();
+  ctx.coarsening.algorithm = CoarseningAlgorithm::SPARSIFICATION_CLUSTERING;
   return ctx;
 }
 
