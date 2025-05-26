@@ -376,13 +376,28 @@ endif ()
 
 # If we can find Mt-KaHyPar, make it available for initial partitioning and refinement
 if (KAMINPAR_BUILD_WITH_MTKAHYPAR)
-    find_library(LIB_MTKAHYPAR_GRAPH mtkahypar)
-
-    if (NOT LIB_MTKAHYPAR_GRAPH)
-        message(STATUS "Mt-KaHyPar initial partitioning not available: library could not be found on this system")
-        set(KAMINPAR_BUILD_WITH_MTKAHYPAR OFF)
+    if (KAMINPAR_DOWNLOAD_MTKAHYPAR)
+        FetchContent_Declare(
+            MtKaHyPar
+            GIT_REPOSITORY https://github.com/dsalwasser/mt-kahypar.git
+            GIT_TAG 5510491fee7e3b6e65b7432c6680f67a9a844795
+            EXCLUDE_FROM_ALL
+            UPDATE_DISCONNECTED TRUE
+        )
+        set(KAHYPAR_ENABLE_ARCH_COMPILE_OPTIMIZATIONS ${KAMINPAR_BUILD_WITH_MTUNE_NATIVE} CACHE BOOL "" FORCE)
+        if (KAMINPAR_64BIT_IDS OR KAMINPAR_64BIT_NODE_IDS OR KAMINPAR_64BIT_EDGE_IDS)
+            set(KAHYPAR_USE_64_BIT_IDS ON CACHE BOOL "" FORCE)
+        endif ()
+        FetchContent_MakeAvailable(MtKaHyPar)
     else ()
-        message(STATUS "Found Mt-KaHyPar at ${LIB_MTKAHYPAR_GRAPH}")
+        find_library(LIB_MTKAHYPAR_GRAPH mtkahypar)
+
+        if (NOT LIB_MTKAHYPAR_GRAPH)
+            message(STATUS "Mt-KaHyPar initial partitioning not available: library could not be found on this system")
+            set(KAMINPAR_BUILD_WITH_MTKAHYPAR OFF)
+        else ()
+            message(STATUS "Found Mt-KaHyPar at ${LIB_MTKAHYPAR_GRAPH}")
+        endif ()
     endif ()
 endif ()
 
@@ -409,33 +424,6 @@ if (KAMINPAR_BUILD_DISTRIBUTED)
             UPDATE_DISCONNECTED TRUE
         )
         FetchContent_MakeAvailable(Backward)
-    endif ()
-endif ()
-
-# If we can find Mt-KaHyPar, make it available for initial partitioning and refinement
-if (KAMINPAR_BUILD_WITH_MTKAHYPAR)
-    if (KAMINPAR_DOWNLOAD_MTKAHYPAR)
-        FetchContent_Declare(
-            MtKaHyPar
-            GIT_REPOSITORY https://github.com/dsalwasser/mt-kahypar.git
-            GIT_TAG 5510491fee7e3b6e65b7432c6680f67a9a844795
-            EXCLUDE_FROM_ALL
-            UPDATE_DISCONNECTED TRUE
-        )
-        set(KAHYPAR_ENABLE_ARCH_COMPILE_OPTIMIZATIONS ${KAMINPAR_BUILD_WITH_MTUNE_NATIVE} CACHE BOOL "" FORCE)
-        if (KAMINPAR_64BIT_IDS OR KAMINPAR_64BIT_NODE_IDS OR KAMINPAR_64BIT_EDGE_IDS)
-            set(KAHYPAR_USE_64_BIT_IDS ON CACHE BOOL "" FORCE)
-        endif ()
-        FetchContent_MakeAvailable(MtKaHyPar)
-    else ()
-        find_library(LIB_MTKAHYPAR_GRAPH mtkahypar)
-
-        if (NOT LIB_MTKAHYPAR_GRAPH)
-            message(STATUS "Mt-KaHyPar initial partitioning not available: library could not be found on this system")
-            set(KAMINPAR_BUILD_WITH_MTKAHYPAR OFF)
-        else ()
-            message(STATUS "Found Mt-KaHyPar at ${LIB_MTKAHYPAR_GRAPH}")
-        endif ()
     endif ()
 endif ()
 
