@@ -281,6 +281,8 @@ std::ostream &operator<<(std::ostream &out, const RefinementAlgorithm algorithm)
     return out << "fm";
   case RefinementAlgorithm::TWOWAY_FLOW:
     return out << "twoway-flow";
+  case RefinementAlgorithm::MULTIWAY_FLOW:
+    return out << "multiway-flow";
   case RefinementAlgorithm::JET:
     return out << "jet";
   case RefinementAlgorithm::MTKAHYPAR:
@@ -298,6 +300,7 @@ std::unordered_map<std::string, RefinementAlgorithm> get_refinement_algorithms()
       {"lp", RefinementAlgorithm::LABEL_PROPAGATION},
       {"fm", RefinementAlgorithm::KWAY_FM},
       {"twoway-flow", RefinementAlgorithm::TWOWAY_FLOW},
+      {"multiway-flow", RefinementAlgorithm::MULTIWAY_FLOW},
       {"jet", RefinementAlgorithm::JET},
       {"mtkahypar", RefinementAlgorithm::MTKAHYPAR},
   };
@@ -555,7 +558,8 @@ void print(const RefinementContext &r_ctx, std::ostream &out) {
           << (r_ctx.twoway_flow.abort_on_candidate_cut ? "yes" : "no") << "\n";
     }
 
-    out << "  Flow Cutter:                " << (r_ctx.twoway_flow.use_whfc ? "WHFC" : "Built-in") << "\n";
+    out << "  Flow Cutter:                " << (r_ctx.twoway_flow.use_whfc ? "WHFC" : "Built-in")
+        << "\n";
     out << "  Time Limit:                 " << r_ctx.twoway_flow.time_limit << " minutes" << "\n";
     out << "  Parallel scheduling:        "
         << (r_ctx.twoway_flow.parallel_scheduling ? "yes" : "no") << "\n";

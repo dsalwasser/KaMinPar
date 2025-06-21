@@ -340,6 +340,36 @@ Context create_default_context() {
                       .max_num_rounds = std::numeric_limits<std::size_t>::max(),
                       .min_round_improvement_factor = 0.01,
                   },
+              .multiway_flow =
+                  {
+                      .border_region_scaling_factor = 16,
+                      .max_border_distance = 2,
+                      .cut_algorithm = CutAlgorithm::ISOLATING_CUT_HEURISTIC,
+                      .isolating_cut_heuristic =
+                          {
+                              .flow_algorithm = FlowAlgorithm::FIFO_PREFLOW_PUSH,
+                              .fifo_preflow_push =
+                                  {
+
+                                      .global_relabeling_heuristic = true,
+                                      .global_relabeling_frequency = 1,
+                                  },
+                          },
+                      .labelling_function_heuristic =
+                          {
+                              .initialization_strategy =
+                                  LabellingFunctionInitializationStrategy::ZERO,
+                              .flow_algorithm = FlowAlgorithm::FIFO_PREFLOW_PUSH,
+                              .fifo_preflow_push =
+                                  {
+
+                                      .global_relabeling_heuristic = true,
+                                      .global_relabeling_frequency = 1,
+                                  },
+                              .epsilon = 0.01,
+                              .max_num_rounds = std::numeric_limits<std::size_t>::max(),
+                          },
+                  },
               .jet =
                   {
                       .num_iterations = 0,
@@ -574,7 +604,8 @@ Context create_mtkahypar_kway_context() {
   return ctx;
 }
 
-// Based on Mt-KaHyPar coarsening, uses edge sparsification for worst-case linear-time running time.
+// Based on Mt-KaHyPar coarsening, uses edge sparsification for worst-case linear-time running
+// time.
 Context create_linear_time_kway_context() {
   Context ctx = create_mtkahypar_kway_context();
   ctx.coarsening.algorithm = CoarseningAlgorithm::SPARSIFICATION_CLUSTERING;
