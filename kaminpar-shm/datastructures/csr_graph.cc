@@ -335,14 +335,18 @@ bool validate_graph(
         }
 
         if (!adjwgt.empty() && adjwgt[e] != adjwgt[e_prime]) {
-          LOG_WARNING << "Weight of edge " << e << " (" << adjwgt[e] << ") "              //
-                      << "differs from the weight of its reverse edge " << e_prime << " " //
-                      << "(" << adjwgt[e_prime] << ")";                                   //
+          LOG_WARNING << "Weight of edge " << e << " (" << u << " --> " << v << "[" << adjwgt[e]
+                      << "]) differs from the weight of its reverse edge " << e_prime << " "
+                      << "(" << v << " --> " << u << "[" << adjwgt[e_prime] << "])";
+          return false;
+        }
+
+        if (found_reverse) {
+          LOG_WARNING << "Neighbor " << u << " of " << v << " is listed more than once";
           return false;
         }
 
         found_reverse = true;
-        break;
       }
 
       if (check_undirected && v < n - num_pseudo_nodes && !found_reverse) {

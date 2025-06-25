@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <unordered_set>
 
 #include "kaminpar-shm/kaminpar.h"
 
@@ -11,9 +12,11 @@ namespace kaminpar::shm {
 
 template <typename PartitionedGraph, typename Graph> class NonConcurrentDenseGainCache {
 public:
-  void
-  initialize(const BlockID overloaded_block, const PartitionedGraph &p_graph, const Graph &graph) {
-    _overloaded_block = overloaded_block;
+  void initialize(
+      const std::unordered_set<BlockID> &overloaded_blocks,
+      const PartitionedGraph &p_graph,
+      const Graph &graph
+  ) {
     _p_graph = &p_graph;
     _graph = &graph;
 
@@ -27,7 +30,8 @@ public:
 
     std::fill_n(_gain_cache.begin(), gain_cache_size, 0);
     for (const NodeID u : graph.nodes()) {
-      if (_p_graph->block(u) != overloaded_block) {
+      const BlockID u_block = _p_graph->block(u);
+      if (!overloaded_blocks.contains(u_block)) {
         continue;
       }
 
@@ -40,10 +44,6 @@ public:
 
   void move(const NodeID u, const BlockID from, const BlockID to) {
     _graph->adjacent_nodes(u, [&](const NodeID v, const EdgeWeight w) {
-      if (_p_graph->block(v) != _overloaded_block) {
-        return;
-      }
-
       _gain_cache[index(v, from)] -= w;
       _gain_cache[index(v, to)] += w;
     });
@@ -63,8 +63,6 @@ private:
   }
 
 private:
-  BlockID _overloaded_block;
-
   const PartitionedGraph *_p_graph;
   const Graph *_graph;
 

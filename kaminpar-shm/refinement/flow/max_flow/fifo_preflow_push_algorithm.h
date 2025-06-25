@@ -3,8 +3,7 @@
 #include <limits>
 #include <queue>
 #include <span>
-
-#include "kaminpar.h"
+#include <unordered_set>
 
 #include "kaminpar-shm/datastructures/csr_graph.h"
 #include "kaminpar-shm/kaminpar.h"
@@ -55,6 +54,13 @@ public:
       const CSRGraph &graph, std::span<const NodeID> reverse_edges, NodeID source, NodeID sink
   ) override;
 
+  void initialize(
+      const CSRGraph &graph,
+      std::span<const NodeID> reverse_edges,
+      const std::unordered_set<NodeID> &sources,
+      const std::unordered_set<NodeID> &sinks
+  ) override;
+
   void add_sources(std::span<const NodeID> sources) override;
 
   void add_sinks(std::span<const NodeID> sinks) override;
@@ -66,6 +72,8 @@ public:
   const NodeStatus &node_status() const override;
 
 private:
+  void initialize();
+
   template <bool kSetSourceHeight = false>
   void saturate_source_edges(std::span<const NodeID> sources);
 

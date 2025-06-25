@@ -699,14 +699,45 @@ CLI::Option_group *create_multiway_flow_refinement_options(CLI::App *app, Contex
 
   multiway_flow
       ->add_option("--r-multiway-flow-cut-algorithm", ctx.refinement.multiway_flow.cut_algorithm)
+      ->transform(CLI::CheckedTransformer(get_cut_algorithms(), CLI::ignore_case))
+      ->capture_default_str();
+
+  multiway_flow
+      ->add_option(
+          "--r-multiway-flow-labelling-function-heursitic-initialization-strategy",
+          ctx.refinement.multiway_flow.labelling_function_heuristic.initialization_strategy
+      )
       ->transform(
           CLI::CheckedTransformer(
-              std::unordered_map<std::string, CutAlgorithm>{
-                  {"isolating-cut", CutAlgorithm::ISOLATING_CUT_HEURISTIC},
-                  {"labelling-function", CutAlgorithm::LABELLING_FUNCTION_HEURISTIC},
-              },
-              CLI::ignore_case
+              get_labelling_function_initialization_strategies(), CLI::ignore_case
           )
+      )
+      ->capture_default_str();
+  multiway_flow
+      ->add_option(
+          "--r-multiway-flow-labelling-function-heursitic-epsilon",
+          ctx.refinement.multiway_flow.labelling_function_heuristic.epsilon
+      )
+      ->capture_default_str();
+  multiway_flow
+      ->add_option(
+          "--r-multiway-flow-labelling-function-heursitic-max-num-rounds",
+          ctx.refinement.multiway_flow.labelling_function_heuristic.max_num_rounds
+      )
+      ->capture_default_str();
+
+  multiway_flow
+      ->add_option("--r-multiway-flow-unconstrained", ctx.refinement.multiway_flow.unconstrained)
+      ->capture_default_str();
+  multiway_flow
+      ->add_option(
+          "--r-multiway-flow-dynamic-rebalancer", ctx.refinement.multiway_flow.dynamic_rebalancer
+      )
+      ->capture_default_str();
+  multiway_flow
+      ->add_option(
+          "--r-multiway-flow-abort-on-candidate-cut",
+          ctx.refinement.multiway_flow.abort_on_candidate_cut
       )
       ->capture_default_str();
 

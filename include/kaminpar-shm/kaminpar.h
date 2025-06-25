@@ -328,6 +328,13 @@ struct MultiwayFlowRefinementContext {
   CutAlgorithm cut_algorithm;
   IsolatingCutHeuristicContext isolating_cut_heuristic;
   LabellingFunctionHeuristicContext labelling_function_heuristic;
+
+  bool unconstrained;
+  bool dynamic_rebalancer;
+  bool abort_on_candidate_cut;
+
+  std::size_t max_num_rounds;
+  double min_round_improvement_factor;
 };
 
 struct JetRefinementContext {

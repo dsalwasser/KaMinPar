@@ -1,6 +1,7 @@
 #pragma once
 
 #include <span>
+#include <unordered_set>
 
 #include "kaminpar-shm/datastructures/csr_graph.h"
 #include "kaminpar-shm/kaminpar.h"
@@ -19,6 +20,13 @@ public:
 
   virtual void initialize(
       const CSRGraph &graph, std::span<const NodeID> reverse_edges, NodeID source, NodeID sink
+  ) = 0;
+
+  virtual void initialize(
+      const CSRGraph &graph,
+      std::span<const NodeID> reverse_edges,
+      const std::unordered_set<NodeID> &sources,
+      const std::unordered_set<NodeID> &sinks
   ) = 0;
 
   virtual void add_sources(std::span<const NodeID> sources) = 0;

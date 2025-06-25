@@ -33,6 +33,35 @@ void EdmondsKarpAlgorithm::initialize(
   }
 }
 
+void EdmondsKarpAlgorithm::initialize(
+    const CSRGraph &graph,
+    std::span<const NodeID> reverse_edges,
+    const std::unordered_set<NodeID> &sources,
+    const std::unordered_set<NodeID> &sinks
+) {
+  _graph = &graph;
+  _reverse_edges = reverse_edges;
+
+  _node_status.initialize(graph.n());
+  for (const NodeID source : sources) {
+    _node_status.add_source(source);
+  }
+  for (const NodeID sink : sinks) {
+    _node_status.add_sink(sink);
+  }
+
+  _flow_value = 0;
+
+  if (_flow.size() != graph.m()) {
+    _flow.resize(graph.m(), static_array::noinit);
+  }
+  std::fill(_flow.begin(), _flow.end(), 0);
+
+  if (_predecessor.size() < graph.n()) {
+    _predecessor.resize(graph.n(), static_array::noinit);
+  }
+}
+
 void EdmondsKarpAlgorithm::add_sources([[maybe_unused]] std::span<const NodeID> sources) {
   for (const NodeID u : sources) {
     KASSERT(!_node_status.is_sink(u));

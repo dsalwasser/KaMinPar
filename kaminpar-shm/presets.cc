@@ -342,7 +342,7 @@ Context create_default_context() {
                   },
               .multiway_flow =
                   {
-                      .border_region_scaling_factor = 16,
+                      .border_region_scaling_factor = 0.25,
                       .max_border_distance = 2,
                       .cut_algorithm = CutAlgorithm::ISOLATING_CUT_HEURISTIC,
                       .isolating_cut_heuristic =
@@ -369,6 +369,11 @@ Context create_default_context() {
                               .epsilon = 0.01,
                               .max_num_rounds = std::numeric_limits<std::size_t>::max(),
                           },
+                      .unconstrained = false,
+                      .dynamic_rebalancer = false,
+                      .abort_on_candidate_cut = true,
+                      .max_num_rounds = std::numeric_limits<std::size_t>::max(),
+                      .min_round_improvement_factor = 0.01,
                   },
               .jet =
                   {

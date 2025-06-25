@@ -17,7 +17,6 @@ class StaticGreedyBalancer : GreedyBalancerBase<PartitionedGraph, Graph> {
   using Base::_gain_cache;
   using Base::_graph;
   using Base::_max_block_weights;
-  using Base::_overloaded_block;
   using Base::_p_graph;
 
   struct Move {
@@ -67,7 +66,7 @@ private:
       _p_graph->set_block(u, _overloaded_block);
     };
 
-    _gain_cache.initialize(_overloaded_block, *_p_graph, *_graph);
+    _gain_cache.initialize({_overloaded_block}, *_p_graph, *_graph);
     compute_moves();
 
     for (const NodeID u : _moved_nodes) {
@@ -98,7 +97,7 @@ private:
         continue;
       }
 
-      Base::move_node(u, target_block);
+      Base::move_node(u, _overloaded_block, target_block);
       _moves.emplace_back(u, target_block);
 
       _moved_nodes.push_back(u);
@@ -147,6 +146,8 @@ private:
 
 private:
   bool _initialized;
+
+  BlockID _overloaded_block;
   const std::unordered_map<NodeID, NodeID> *_global_to_local_mapping;
   ScalableVector<Move> _virtual_moves;
 

@@ -363,6 +363,46 @@ std::unordered_map<std::string, FlowAlgorithm> get_flow_algorithms() {
   };
 }
 
+std::ostream &operator<<(std::ostream &out, CutAlgorithm algorithm) {
+  switch (algorithm) {
+  case CutAlgorithm::ISOLATING_CUT_HEURISTIC:
+    return out << "isolating-cut-heuristic";
+  case CutAlgorithm::LABELLING_FUNCTION_HEURISTIC:
+    return out << "labelling-function-heuristic";
+  }
+
+  return out << "<invalid>";
+}
+
+std::unordered_map<std::string, CutAlgorithm> get_cut_algorithms() {
+  return {
+      {"isolating-cut-heuristic", CutAlgorithm::ISOLATING_CUT_HEURISTIC},
+      {"labelling-function-heuristic", CutAlgorithm::LABELLING_FUNCTION_HEURISTIC},
+  };
+}
+
+std::ostream &operator<<(std::ostream &out, LabellingFunctionInitializationStrategy strategy) {
+  switch (strategy) {
+  case LabellingFunctionInitializationStrategy::ZERO:
+    return out << "zero";
+  case LabellingFunctionInitializationStrategy::RANDOM:
+    return out << "random";
+  case LabellingFunctionInitializationStrategy::EXISTING_PARTITION:
+    return out << "existing-partition";
+  }
+
+  return out << "<invalid>";
+}
+
+std::unordered_map<std::string, LabellingFunctionInitializationStrategy>
+get_labelling_function_initialization_strategies() {
+  return {
+      {"zero", LabellingFunctionInitializationStrategy::ZERO},
+      {"random", LabellingFunctionInitializationStrategy::RANDOM},
+      {"existing-partition", LabellingFunctionInitializationStrategy::EXISTING_PARTITION},
+  };
+}
+
 std::ostream &operator<<(std::ostream &out, InitialRefinementAlgorithm algorithm) {
   switch (algorithm) {
   case InitialRefinementAlgorithm::NOOP:
@@ -566,6 +606,40 @@ void print(const RefinementContext &r_ctx, std::ostream &out) {
     out << "  Max num rounds:             " << r_ctx.twoway_flow.max_num_rounds << "\n";
     out << "  Min round improvement:      " << r_ctx.twoway_flow.min_round_improvement_factor
         << "\n";
+  }
+
+  if (r_ctx.includes_algorithm(RefinementAlgorithm::MULTIWAY_FLOW)) {
+    out << "Multi-way flow:\n";
+    out << "  Border region scaling:      " << r_ctx.multiway_flow.border_region_scaling_factor
+        << "\n";
+    out << "  Max border distance:        " << r_ctx.multiway_flow.max_border_distance << "\n";
+
+    out << "  Multi-way cut algorithm:    " << r_ctx.multiway_flow.cut_algorithm << "\n";
+    if (r_ctx.multiway_flow.cut_algorithm == CutAlgorithm::ISOLATING_CUT_HEURISTIC) {
+      const auto &cut_ctx = r_ctx.multiway_flow.isolating_cut_heuristic;
+
+      out << "    Flow algorithm:           " << cut_ctx.flow_algorithm << "\n";
+      if (cut_ctx.flow_algorithm == FlowAlgorithm::FIFO_PREFLOW_PUSH) {
+        out << "      Global relabeling:      "
+            << (cut_ctx.fifo_preflow_push.global_relabeling_frequency ? "yes" : "no") << "\n";
+        out << "      Global relabel freq.:   "
+            << cut_ctx.fifo_preflow_push.global_relabeling_frequency << "\n";
+      }
+    } else if (r_ctx.multiway_flow.cut_algorithm == CutAlgorithm::LABELLING_FUNCTION_HEURISTIC) {
+      const auto &cut_ctx = r_ctx.multiway_flow.labelling_function_heuristic;
+
+      out << "    Flow algorithm:           " << cut_ctx.flow_algorithm << "\n";
+      if (cut_ctx.flow_algorithm == FlowAlgorithm::FIFO_PREFLOW_PUSH) {
+        out << "      Global relabeling:      "
+            << (cut_ctx.fifo_preflow_push.global_relabeling_frequency ? "yes" : "no") << "\n";
+        out << "      Global relabel freq.:   "
+            << cut_ctx.fifo_preflow_push.global_relabeling_frequency << "\n";
+      }
+
+      out << "    Initialization strategy:  " << cut_ctx.initialization_strategy << "\n";
+      out << "    Min improvement factor:   " << cut_ctx.epsilon << "\n";
+      out << "    Max num rounds:           " << cut_ctx.max_num_rounds << "\n";
+    }
   }
 
   if (r_ctx.includes_algorithm(RefinementAlgorithm::JET)) {

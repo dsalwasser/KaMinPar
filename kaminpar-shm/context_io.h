@@ -12,6 +12,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "kaminpar.h"
+
 #include "kaminpar-shm/kaminpar.h"
 
 namespace kaminpar::shm {
@@ -72,6 +74,15 @@ std::unordered_map<std::string, GainCacheStrategy> get_gain_cache_strategies();
 std::ostream &operator<<(std::ostream &out, FlowAlgorithm algorithm);
 
 std::unordered_map<std::string, FlowAlgorithm> get_flow_algorithms();
+
+std::ostream &operator<<(std::ostream &out, CutAlgorithm algorithm);
+
+std::unordered_map<std::string, CutAlgorithm> get_cut_algorithms();
+
+std::ostream &operator<<(std::ostream &out, LabellingFunctionInitializationStrategy strategy);
+
+std::unordered_map<std::string, LabellingFunctionInitializationStrategy>
+get_labelling_function_initialization_strategies();
 
 std::ostream &operator<<(std::ostream &out, InitialRefinementAlgorithm algorithm);
 
