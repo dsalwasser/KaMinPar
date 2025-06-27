@@ -174,6 +174,8 @@ LabellingFunctionHeuristic::construct_flow_network(const BlockID label) {
   const NodeID kFirstRealNodeID = kFirstTerminalNodeID + num_terminal_sets;
   const NodeID kFirstEdgeNodeID = kFirstRealNodeID + (_graph->n() - num_terminals);
 
+  _terminal_tneighborhoods.clear();
+  _terminal_neighborhoods.clear();
   if (_edge_collector.size() < _graph->n() + num_terminal_sets) {
     _edge_collector.resize(_graph->n() + num_terminal_sets);
   }
@@ -477,153 +479,6 @@ LabellingFunctionHeuristic::construct_flow_network(const BlockID label) {
   );
 }
 
-/*
-LabellingFunctionHeuristic::FlowNetwork
-LabellingFunctionHeuristic::construct_flow_network(const BlockID label) const {
-  SCOPED_TIMER("Construct Flow Network");
-
-  constexpr NodeID kSource = 0;
-  constexpr NodeID kSink = 1;
-  constexpr NodeID kFirstNodeID = 2;
-  constexpr EdgeWeight kInfinity = std::numeric_limits<EdgeWeight>::max();
-
-  NodeID num_nodes = 2 + _graph->n();
-  for (const NodeID u : _graph->nodes()) {
-    const BlockID u_label = _labelling_function[u];
-
-    _graph->adjacent_nodes(u, [&](const NodeID v) {
-      if (u >= v) {
-        return;
-      }
-
-      const BlockID v_label = _labelling_function[v];
-      num_nodes += (u_label != v_label) ? 1 : 0;
-    });
-  }
-
-  StaticArray<EdgeID> nodes(num_nodes + 1, static_array::noinit);
-  std::fill_n(nodes.begin(), nodes.size(), 0);
-
-  NodeID cur_edge = kFirstNodeID + _graph->n();
-  for (const NodeID u : _graph->nodes()) {
-    const BlockID u_label = _labelling_function[u];
-
-    if (_terminal_sets->is_terminal(u) && u_label != label) {
-      nodes[kSource] += 1;
-      nodes[kFirstNodeID + u] += 1;
-    }
-
-    if (u_label == label) {
-      nodes[kSink] += 1;
-      nodes[kFirstNodeID + u] += 1;
-    }
-
-    _graph->adjacent_nodes(u, [&](const NodeID v) {
-      if (u >= v) {
-        return;
-      }
-
-      const BlockID v_label = _labelling_function[v];
-      if (u_label == v_label) {
-        nodes[kFirstNodeID + u] += 1;
-        nodes[kFirstNodeID + v] += 1;
-      } else {
-        nodes[kSink] += 1;
-        nodes[cur_edge] += 1;
-
-        if (u_label != label) {
-          nodes[kFirstNodeID + u] += 1;
-          nodes[cur_edge] += 1;
-        }
-
-        if (v_label != label) {
-          nodes[kFirstNodeID + v] += 1;
-          nodes[cur_edge] += 1;
-        }
-
-        cur_edge += 1;
-      }
-    });
-  }
-
-  std::partial_sum(nodes.begin(), nodes.end(), nodes.begin());
-
-  const EdgeID num_edges = nodes.back();
-  StaticArray<NodeID> edges(num_edges, kInvalidNodeID, static_array::seq);
-  StaticArray<EdgeWeight> edge_weights(num_edges, static_array::noinit);
-  StaticArray<NodeID> reverse_edges(num_edges, static_array::noinit);
-
-  LOG << num_nodes << ' ' << num_edges;
-  const auto add_edge = [&](const NodeID u, const NodeID v, const EdgeWeight w) {
-    const EdgeID e1 = --nodes[u];
-    edges[e1] = v;
-    edge_weights[e1] = w;
-
-    const EdgeID e2 = --nodes[v];
-    edges[e2] = u;
-    edge_weights[e2] = w;
-
-    reverse_edges[e1] = e2;
-    reverse_edges[e2] = e1;
-
-    KASSERT(u != kSource || v != kSink);
-  };
-
-  cur_edge = kFirstNodeID + _graph->n();
-  for (const NodeID u : _graph->nodes()) {
-    const BlockID u_label = _labelling_function[u];
-
-    if (_terminal_sets->is_terminal(u) && u_label != label) {
-      add_edge(kSource, kFirstNodeID + u, kInfinity);
-    }
-
-    if (u_label == label) {
-      add_edge(kSink, kFirstNodeID + u, kInfinity);
-    }
-
-    _graph->adjacent_nodes(u, [&](const NodeID v, const EdgeWeight w) {
-      if (u >= v) {
-        return;
-      }
-
-      const BlockID v_label = _labelling_function[v];
-      if (u_label == v_label) {
-        add_edge(kFirstNodeID + u, kFirstNodeID + v, w);
-      } else {
-        add_edge(kSink, cur_edge, w);
-
-        if (u_label != label) {
-          add_edge(kFirstNodeID + u, cur_edge, w);
-        }
-
-        if (v_label != label) {
-          add_edge(kFirstNodeID + v, cur_edge, w);
-        }
-
-        cur_edge += 1;
-      }
-    });
-  }
-
-  CSRGraph graph(
-      CSRGraph::seq(),
-      std::move(nodes),
-      std::move(edges),
-      StaticArray<NodeWeight>(),
-      std::move(edge_weights)
-  );
-
-  KASSERT(debug::validate_graph(graph), "constructed an invalid flow network", assert::heavy);
-  KASSERT(
-      debug::is_valid_reverse_edge_index(graph, reverse_edges),
-      "constructed an invalid reverse edge index",
-      assert::heavy
-  );
-
-  return FlowNetwork(kSource, kSink, std::move(graph), std::move(reverse_edges), 0, 0, {});
-}
-*/
-
 void LabellingFunctionHeuristic::derive_labelling_function(
     const BlockID label, const FlowNetwork &flow_network, std::span<const EdgeWeight> flow
 ) {
@@ -637,7 +492,6 @@ void LabellingFunctionHeuristic::derive_labelling_function(
     }
 
     const NodeID u_local = flow_network.node_start + flow_network.remapping[u] - 1;
-    // const NodeID u_local = 2 + u;
     if (!cut_nodes.contains(u_local)) {
       _labelling_function[u] = label;
     }
