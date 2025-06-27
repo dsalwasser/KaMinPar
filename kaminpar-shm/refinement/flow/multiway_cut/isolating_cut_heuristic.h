@@ -40,16 +40,23 @@ private:
       std::span<const EdgeWeight> flow
   );
 
-  EdgeWeight compute_cut_value(const std::unordered_set<EdgeID> &cut_edges);
+  void repair_isolating_assignment(
+      const BlockID block,
+      std::span<const NodeID> terminals,
+      const std::unordered_set<EdgeID> &cut_edges
+  );
+
+  [[nodiscard]] EdgeWeight compute_cut_value(const std::unordered_set<EdgeID> &cut_edges) const;
 
 private:
   const IsolatingCutHeuristicContext &_ctx;
 
+  const PartitionedCSRGraph *_p_graph;
   const CSRGraph *_graph;
   std::span<const NodeID> _reverse_edges;
 
   std::unique_ptr<MaxFlowAlgorithm> _max_flow_algorithm;
-  StaticArray<BlockID> _node_assignment;
+  StaticArray<BlockID> _isolating_assignment;
 };
 
 } // namespace kaminpar::shm

@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <limits>
 #include <queue>
-#include <unordered_set>
 #include <utility>
 
 #include "kaminpar.h"
@@ -12,7 +11,6 @@
 #include "kaminpar-shm/refinement/flow/max_flow/fifo_preflow_push_algorithm.h"
 
 #include "kaminpar-common/assert.h"
-#include "kaminpar-common/logger.h"
 #include "kaminpar-common/timer.h"
 
 namespace kaminpar::shm {
@@ -29,20 +27,22 @@ IsolatingCutHeuristic::IsolatingCutHeuristic(const IsolatingCutHeuristicContext 
 }
 
 MultiwayCutAlgorithm::Result IsolatingCutHeuristic::compute(
-    [[maybe_unused]] const PartitionedCSRGraph &p_graph,
+    const PartitionedCSRGraph &p_graph,
     const CSRGraph &graph,
     std::span<const NodeID> reverse_edges,
     const TerminalSets &terminal_sets
 ) {
+  _p_graph = &p_graph;
   _graph = &graph;
   _reverse_edges = reverse_edges;
 
-  if (_node_assignment.size() < graph.n()) {
-    _node_assignment.resize(graph.n(), static_array::noinit);
+  if (_isolating_assignment.size() < graph.n()) {
+    _isolating_assignment.resize(graph.n(), static_array::noinit);
   }
-  std::fill_n(_node_assignment.begin(), graph.n(), kInvalidBlockID);
+  std::fill_n(_isolating_assignment.begin(), graph.n(), kInvalidBlockID);
 
   std::unordered_set<EdgeID> cut_edges;
+  BlockID heaviest_side = kInvalidBlockID;
   Cut cur_max_weighted_cut(std::numeric_limits<EdgeWeight>::min(), {});
 
   std::unordered_set<NodeID> terminals;
@@ -69,6 +69,7 @@ MultiwayCutAlgorithm::Result IsolatingCutHeuristic::compute(
     KASSERT(flow_value == cut.value);
 
     if (cut.value > cur_max_weighted_cut.value) {
+      heaviest_side = terminal_set;
       std::swap(cut, cur_max_weighted_cut);
     }
 
@@ -87,6 +88,9 @@ MultiwayCutAlgorithm::Result IsolatingCutHeuristic::compute(
       assert::heavy
   );
 
+  repair_isolating_assignment(
+      heaviest_side, terminal_sets.terminal_set_nodes(heaviest_side), cut_edges
+  );
   const EdgeWeight cut_value = compute_cut_value(cut_edges);
   return Result(cut_value, std::move(cut_edges));
 }
@@ -122,7 +126,8 @@ IsolatingCutHeuristic::Cut IsolatingCutHeuristic::compute_cut(
   EdgeWeight cut_value = 0;
   std::unordered_set<EdgeID> cut_edges;
   for (const NodeID u : terminal_side_nodes) {
-    _node_assignment[u] = block;
+    KASSERT(_isolating_assignment[u] == kInvalidBlockID);
+    _isolating_assignment[u] = block;
 
     _graph->neighbors(u, [&](const EdgeID e, const NodeID v, const EdgeWeight w) {
       if (terminal_side_nodes.contains(v)) {
@@ -138,13 +143,64 @@ IsolatingCutHeuristic::Cut IsolatingCutHeuristic::compute_cut(
   return Cut(cut_value, std::move(cut_edges));
 }
 
-EdgeWeight IsolatingCutHeuristic::compute_cut_value(const std::unordered_set<EdgeID> &cut_edges) {
+void IsolatingCutHeuristic::repair_isolating_assignment(
+    const BlockID block,
+    std::span<const NodeID> terminals,
+    const std::unordered_set<EdgeID> &cut_edges
+) {
+  SCOPED_TIMER("Repair Isolating Assignment");
+
+  std::unordered_set<NodeID> terminal_side_nodes;
+  std::queue<NodeID> bfs_queue;
+  for (const NodeID terminal : terminals) {
+    terminal_side_nodes.insert(terminal);
+    bfs_queue.push(terminal);
+  }
+
+  while (!bfs_queue.empty()) {
+    const NodeID u = bfs_queue.front();
+    bfs_queue.pop();
+
+    _graph->neighbors(u, [&](const EdgeID e, const NodeID v) {
+      if (terminal_side_nodes.contains(v) || cut_edges.contains(e)) {
+        return;
+      }
+
+      _isolating_assignment[v] = block;
+      terminal_side_nodes.insert(v);
+      bfs_queue.push(v);
+    });
+  }
+}
+
+EdgeWeight
+IsolatingCutHeuristic::compute_cut_value(const std::unordered_set<EdgeID> &cut_edges) const {
   SCOPED_TIMER("Compute Cut Value");
 
   EdgeWeight cut_value = 0;
   for (const NodeID u : _graph->nodes()) {
-    _graph->neighbors(u, [&](const EdgeID e, [[maybe_unused]] const NodeID v, const EdgeWeight w) {
-      cut_value += cut_edges.contains(e) ? w : 0;
+    const BlockID u_block = _p_graph->block(u);
+    const BlockID u_isolating_block = _isolating_assignment[u];
+    const bool u_reachable = u_isolating_block != kInvalidBlockID;
+
+    _graph->neighbors(u, [&](const EdgeID e, const NodeID v, const EdgeWeight w) {
+      const BlockID v_block = _p_graph->block(v);
+      const BlockID v_isolating_block = _isolating_assignment[v];
+
+      const bool cut_edge = cut_edges.contains(e);
+      const bool v_reachable = v_isolating_block != kInvalidBlockID;
+
+      if (cut_edge) {
+        if (u_reachable && v_reachable) {
+          cut_value += w;
+        } else if (u_reachable) {
+          cut_value += (u_isolating_block != v_block) ? w : 0;
+        } else if (v_reachable) {
+          cut_value += (v_isolating_block != u_block) ? w : 0;
+        } else {
+          cut_value += (u_block != v_block) ? w : 0;
+        }
+      }
     });
   }
 

@@ -390,7 +390,7 @@ private:
           << new_global_cut_value << ")";
 
       update_partition(cut_edges);
-      KASSERT(cut_value >= metrics::edge_cut_seq(_local_p_graph));
+      KASSERT(cut_value == metrics::edge_cut_seq(_local_p_graph));
 
       const auto [is_balanced, lightest_block] = block_weights_status();
       if (is_balanced) {
