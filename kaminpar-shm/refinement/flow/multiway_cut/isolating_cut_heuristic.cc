@@ -5,8 +5,6 @@
 #include <queue>
 #include <utility>
 
-#include "kaminpar.h"
-
 #include "kaminpar-shm/refinement/flow/max_flow/edmond_karp_algorithm.h"
 #include "kaminpar-shm/refinement/flow/max_flow/fifo_preflow_push_algorithm.h"
 

@@ -491,63 +491,7 @@ private:
   bool add_terminal(const BlockID block) {
     SCOPED_TIMER("Add Terminal");
 
-    /*
-    const CSRGraph &graph = _flow_network.graph;
-    const NodeWeight max_weight =
-        _p_ctx.max_block_weight(block) - _local_p_graph.block_weight(block);
-
-    DBG << "Piercing on block-side " << block << " (" << _local_p_graph.block_weight(block) << "/"
-        << (_p_ctx.max_block_weight(block)) << ")";
-
-    NodeID piercing_node = kInvalidNodeID;
-    float piercing_node_gain = -std::numeric_limits<float>::infinity();
-    for (const NodeID terminal : _terminal_sets.terminal_set_nodes(block)) {
-      graph.adjacent_nodes(terminal, [&](const NodeID u) {
-        const BlockID u_block = _local_p_graph.block(u);
-        if (u_block == block || _terminal_sets.is_terminal(u)) {
-          return;
-        }
-
-        const EdgeWeight u_weight = graph.node_weight(u);
-        if (u_weight > max_weight) {
-          return;
-        }
-
-        EdgeWeight from_connection = 0;
-        EdgeWeight to_connection = 0;
-        graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight w) {
-          const BlockID v_block = _local_p_graph.block(v);
-          from_connection += (v_block == u_block) ? w : 0;
-          to_connection += (v_block == block) ? w : 0;
-        });
-
-        const EdgeWeight absolute_gain = to_connection - from_connection;
-        const float gain = (absolute_gain >= 0) ? (absolute_gain * u_weight)
-                                                : (absolute_gain / static_cast<float>(u_weight));
-        if (gain > piercing_node_gain) {
-          piercing_node = u;
-          piercing_node_gain = gain;
-        }
-      });
-    }
-
-    if (piercing_node != kInvalidNodeID) {
-      _local_p_graph.set_block(piercing_node, block);
-      _terminal_sets.set_terminal_set(piercing_node, block);
-      return true;
-    }
-      */
-
-    /*
-    for (const NodeID u : graph.nodes()) {
-      if (_terminal_sets.is_terminal(u)) {
-        continue;
-      }
-
-      _terminal_sets.set_terminal_set(u, block);
-      return true;
-    }
-    */
+    // TODO
 
     return false;
   }
@@ -571,10 +515,6 @@ private:
 
     for (const NodeID u : _graph.nodes()) {
       _p_graph_rebalancing_copy.set_block(u, _p_graph.block(u));
-    }
-
-    if (!_f_ctx.dynamic_rebalancer) {
-      LOG_WARNING << "Only the dynamic rebalancer is currently implemented";
     }
 
     _dynamic_balancer.setup(_p_graph_rebalancing_copy, _graph);

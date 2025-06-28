@@ -731,11 +731,6 @@ CLI::Option_group *create_multiway_flow_refinement_options(CLI::App *app, Contex
       ->capture_default_str();
   multiway_flow
       ->add_option(
-          "--r-multiway-flow-dynamic-rebalancer", ctx.refinement.multiway_flow.dynamic_rebalancer
-      )
-      ->capture_default_str();
-  multiway_flow
-      ->add_option(
           "--r-multiway-flow-abort-on-candidate-cut",
           ctx.refinement.multiway_flow.abort_on_candidate_cut
       )

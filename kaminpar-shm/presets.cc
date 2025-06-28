@@ -370,7 +370,6 @@ Context create_default_context() {
                               .max_num_rounds = std::numeric_limits<std::size_t>::max(),
                           },
                       .unconstrained = false,
-                      .dynamic_rebalancer = false,
                       .abort_on_candidate_cut = true,
                       .max_num_rounds = std::numeric_limits<std::size_t>::max(),
                       .min_round_improvement_factor = 0.01,
