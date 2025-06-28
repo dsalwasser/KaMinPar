@@ -271,6 +271,12 @@ struct FIFOPreflowPushContext {
 
 struct PiercingHeuristicContext {
   bool pierce_all_viable;
+
+  bool bulk_piercing;
+  double bulk_piercing_shrinking_factor;
+  NodeID bulk_piercing_round_threshold;
+
+  bool fallback_heuristic;
 };
 
 struct TwowayFlowRefinementContext {
