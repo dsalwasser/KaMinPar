@@ -84,6 +84,10 @@ std::ostream &operator<<(std::ostream &out, LabellingFunctionInitializationStrat
 std::unordered_map<std::string, LabellingFunctionInitializationStrategy>
 get_labelling_function_initialization_strategies();
 
+std::ostream &operator<<(std::ostream &out, MultiwayPiercingHeuristicKind piercing_heuristic);
+
+std::unordered_map<std::string, MultiwayPiercingHeuristicKind> get_multiway_piercing_heuristics();
+
 std::ostream &operator<<(std::ostream &out, InitialRefinementAlgorithm algorithm);
 
 std::unordered_map<std::string, InitialRefinementAlgorithm> get_initial_refinement_algorithms();

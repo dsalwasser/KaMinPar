@@ -1,4 +1,4 @@
-#include "kaminpar-shm/refinement/flow/piercing/piercing_heuristic.h"
+#include "kaminpar-shm/refinement/flow/piercing/twoway_piercing_heuristic.h"
 
 #include <algorithm>
 #include <limits>
@@ -7,7 +7,14 @@
 
 namespace kaminpar::shm {
 
-PiercingHeuristic::PiercingHeuristic(const PiercingHeuristicContext &ctx) : _ctx(ctx) {}
+PiercingHeuristic::PiercingHeuristic(const PiercingHeuristicContext &ctx)
+    : _ctx(ctx),
+      _source_side_bulk_piercing_ctx(
+          ctx.bulk_piercing_round_threshold, ctx.bulk_piercing_shrinking_factor
+      ),
+      _sink_side_bulk_piercing_ctx(
+          ctx.bulk_piercing_round_threshold, ctx.bulk_piercing_shrinking_factor
+      ) {}
 
 void PiercingHeuristic::initialize(
     const CSRGraph &graph,
@@ -95,7 +102,7 @@ std::span<const NodeID> PiercingHeuristic::find_piercing_nodes(
 
   if (_ctx.bulk_piercing) {
     BulkPiercingContext &bp_ctx = bulk_piercing_context();
-    bp_ctx.total_bulk_piercing_nodes += _piercing_nodes.size();
+    bp_ctx.register_num_nodes(_piercing_nodes.size());
   }
 
   if (_ctx.fallback_heuristic && _piercing_nodes.empty()) {
@@ -195,26 +202,7 @@ std::size_t PiercingHeuristic::compute_max_num_piercing_nodes(const NodeWeight s
   }
 
   BulkPiercingContext &bp_ctx = bulk_piercing_context();
-  if (++bp_ctx.num_rounds <= _ctx.bulk_piercing_round_threshold) {
-    return 1;
-  }
-
-  bp_ctx.current_weight_goal *= _ctx.bulk_piercing_shrinking_factor;
-  bp_ctx.current_weight_goal_remaining += bp_ctx.current_weight_goal;
-
-  const NodeWeight added_weight =
-      side_weight - (bp_ctx.initial_side_weight + bp_ctx.weight_added_so_far);
-  bp_ctx.weight_added_so_far += added_weight;
-  bp_ctx.current_weight_goal_remaining -= added_weight;
-
-  const double speed =
-      bp_ctx.weight_added_so_far / static_cast<double>(bp_ctx.total_bulk_piercing_nodes);
-  if (bp_ctx.current_weight_goal_remaining <= speed) {
-    return 1;
-  }
-
-  const std::size_t estimated_num_piercing_nodes = bp_ctx.current_weight_goal_remaining / speed;
-  return estimated_num_piercing_nodes;
+  return bp_ctx.compute_max_num_piercing_nodes(side_weight);
 }
 
 PiercingHeuristic::BulkPiercingContext &PiercingHeuristic::bulk_piercing_context() {

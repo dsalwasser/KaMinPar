@@ -381,6 +381,13 @@ Context create_default_context() {
                               .epsilon = 0.01,
                               .max_num_rounds = std::numeric_limits<std::size_t>::max(),
                           },
+                      .piercing =
+                          {
+                              .kind = MultiwayPiercingHeuristicKind::RANDOM,
+                              .bulk_piercing = true,
+                              .bulk_piercing_shrinking_factor = 0.55,
+                              .bulk_piercing_round_threshold = 5,
+                          },
                       .unconstrained = false,
                       .abort_on_candidate_cut = true,
                       .max_num_rounds = std::numeric_limits<std::size_t>::max(),

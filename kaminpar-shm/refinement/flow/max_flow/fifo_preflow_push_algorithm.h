@@ -61,6 +61,13 @@ public:
       const std::unordered_set<NodeID> &sinks
   ) override;
 
+  void initialize(
+      const CSRGraph &graph,
+      std::span<const NodeID> reverse_edges,
+      std::span<const NodeID> sources,
+      std::span<const NodeID> sinks
+  );
+
   void add_sources(std::span<const NodeID> sources) override;
 
   void add_sinks(std::span<const NodeID> sinks) override;

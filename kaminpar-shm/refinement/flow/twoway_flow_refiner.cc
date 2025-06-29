@@ -35,7 +35,7 @@
 #include "kaminpar-shm/refinement/flow/max_flow/edmond_karp_algorithm.h"
 #include "kaminpar-shm/refinement/flow/max_flow/fifo_preflow_push_algorithm.h"
 #include "kaminpar-shm/refinement/flow/max_flow/max_flow_algorithm.h"
-#include "kaminpar-shm/refinement/flow/piercing/piercing_heuristic.h"
+#include "kaminpar-shm/refinement/flow/piercing/twoway_piercing_heuristic.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/dynamic_greedy_balancer.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/static_greedy_balancer.h"
 #include "kaminpar-shm/refinement/flow/util/border_region.h"

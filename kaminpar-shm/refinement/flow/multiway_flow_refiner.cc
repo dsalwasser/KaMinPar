@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <queue>
 #include <span>
 #include <unordered_set>
@@ -20,6 +21,10 @@
 #include "kaminpar-shm/metrics.h"
 #include "kaminpar-shm/refinement/flow/multiway_cut/isolating_cut_heuristic.h"
 #include "kaminpar-shm/refinement/flow/multiway_cut/labelling_function_heuristic.h"
+#include "kaminpar-shm/refinement/flow/piercing/flow_piercing_heuristic.h"
+#include "kaminpar-shm/refinement/flow/piercing/multiway_piercing_heuristic.h"
+#include "kaminpar-shm/refinement/flow/piercing/random_piercing_heuristic.h"
+#include "kaminpar-shm/refinement/flow/piercing/relative_gain_piercing_heuristic.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/dynamic_greedy_balancer.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/static_greedy_balancer.h"
 #include "kaminpar-shm/refinement/flow/util/border_region.h"
@@ -96,6 +101,18 @@ public:
     case CutAlgorithm::LABELLING_FUNCTION_HEURISTIC:
       _multiway_cut_algorithm =
           std::make_unique<LabellingFunctionHeuristic>(_f_ctx.labelling_function_heuristic);
+      break;
+    }
+    switch (_f_ctx.piercing.kind) {
+    case MultiwayPiercingHeuristicKind::RANDOM:
+      _multiway_piercing_heuristic = std::make_unique<RandomPiercingHeuristic>(_f_ctx.piercing);
+      break;
+    case MultiwayPiercingHeuristicKind::RELATIVE_GAIN:
+      _multiway_piercing_heuristic =
+          std::make_unique<RelativeGainPiercingHeuristic>(_f_ctx.piercing);
+      break;
+    case MultiwayPiercingHeuristicKind::FLOW:
+      _multiway_piercing_heuristic = std::make_unique<FlowPiercingHeuristic>(_f_ctx.piercing);
       break;
     }
 
@@ -376,6 +393,12 @@ private:
       initialize_rebalancer();
     }
 
+    TIMED_SCOPE("Initialize Piercing Heuristic") {
+      _multiway_piercing_heuristic->initialize(
+          _flow_network.graph, _local_p_graph, _p_ctx, _terminal_sets
+      );
+    };
+
     DBG << "Starting refinement with an initial cut of " << _global_cut_value;
     while (true) {
       const auto [cut_value, cut_edges] = TIMED_SCOPE("Compute Multi-Way Cut") {
@@ -389,12 +412,18 @@ private:
       DBG << "Found a cut with gain " << gain << " (" << _global_cut_value << " -> "
           << new_global_cut_value << ")";
 
+      if (cut_value >= _initial_cut_value) {
+        DBG << "Cut is worse than the initial cut (" << _initial_cut_value << "); "
+            << "aborting refinement";
+        break;
+      }
+
       update_partition(cut_edges);
       KASSERT(cut_value == metrics::edge_cut_seq(_local_p_graph));
 
       const auto [is_balanced, lightest_block] = block_weights_status();
       if (is_balanced) {
-        DBG << "Found cut is a balanced";
+        DBG << "Found cut is balanced";
         _constrained_cut_value = new_global_cut_value;
 
         compute_moves();
@@ -410,9 +439,9 @@ private:
         }
       }
 
-      const bool found_new_terminal_node = add_terminal(lightest_block);
-      if (!found_new_terminal_node) {
-        LOG_WARNING << "Failed to find a suitable new terminal node";
+      const bool found_piercing_nodes = add_piercing_nodes(lightest_block);
+      if (!found_piercing_nodes) {
+        LOG_WARNING << "Failed to find a suitable piercing node; aborting refinement";
         break;
       }
     }
@@ -466,34 +495,62 @@ private:
     return Cut(cut_weight, std::move(cut_nodes));
   }
 
-  [[nodiscard]] std::pair<bool, BlockWeight> block_weights_status() const {
+  [[nodiscard]] std::pair<bool, BlockID> block_weights_status() const {
     bool is_balanced = true;
-    BlockID lightest_block = kInvalidBlockID;
+    BlockID most_underloaded_block = kInvalidBlockID;
 
-    BlockWeight lightest_block_weight = std::numeric_limits<BlockWeight>::max();
+    BlockWeight greatest_weight_deficit = std::numeric_limits<BlockWeight>::min();
     for (const BlockID block : _local_p_graph.blocks()) {
       const BlockWeight block_weight = _local_p_graph.block_weight(block);
+      const BlockWeight max_block_weight = _p_ctx.max_block_weight(block);
 
-      if (block_weight > _p_ctx.max_block_weight(block)) {
+      if (block_weight > max_block_weight) {
         is_balanced = false;
+        continue;
       }
 
-      if (block_weight < lightest_block_weight) {
-        lightest_block = block;
-        lightest_block_weight = block_weight;
+      const BlockWeight weight_deficit = max_block_weight - block_weight;
+      if (weight_deficit > greatest_weight_deficit) {
+        most_underloaded_block = block;
+        greatest_weight_deficit = weight_deficit;
       }
     }
 
-    KASSERT(lightest_block != kInvalidBlockID);
-    return {is_balanced, lightest_block};
+    KASSERT(most_underloaded_block != kInvalidBlockID);
+    return {is_balanced, most_underloaded_block};
   }
 
-  bool add_terminal(const BlockID block) {
-    SCOPED_TIMER("Add Terminal");
+  bool add_piercing_nodes(const BlockID terminal_set_to_pierce) {
+    SCOPED_TIMER("Compute Piercing Nodes");
 
-    // TODO
+    for (const NodeID u : _flow_network.graph.nodes()) {
+      const BlockID u_block = _local_p_graph.block(u);
+      if (u_block != terminal_set_to_pierce) {
+        continue;
+      }
 
-    return false;
+      if (_terminal_sets.is_terminal(u)) {
+        KASSERT(_terminal_sets.terminal_set(u) == terminal_set_to_pierce);
+        continue;
+      }
+
+      _terminal_sets.set_terminal_set(u, terminal_set_to_pierce);
+    }
+
+    const NodeWeight max_piercing_node_weight = _p_ctx.max_block_weight(terminal_set_to_pierce) -
+                                                _local_p_graph.block_weight(terminal_set_to_pierce);
+    std::span<const NodeID> piercing_nodes = _multiway_piercing_heuristic->find_piercing_nodes(
+        terminal_set_to_pierce,
+        _local_p_graph.block_weight(terminal_set_to_pierce),
+        max_piercing_node_weight
+    );
+
+    for (const NodeID piercing_node : piercing_nodes) {
+      _local_p_graph.set_block(piercing_node, terminal_set_to_pierce);
+      _terminal_sets.set_terminal_set(piercing_node, terminal_set_to_pierce);
+    }
+
+    return !piercing_nodes.empty();
   }
 
   void compute_moves() {
@@ -612,6 +669,7 @@ private:
   ScalableVector<Move> _unconstrained_moves;
 
   std::unique_ptr<MultiwayCutAlgorithm> _multiway_cut_algorithm;
+  std::unique_ptr<MultiwayPiercingHeuristic> _multiway_piercing_heuristic;
 
   PartitionedCSRGraph _p_graph_rebalancing_copy;
   DynamicGreedyMultiBalancer<PartitionedCSRGraph, CSRGraph> _dynamic_balancer;

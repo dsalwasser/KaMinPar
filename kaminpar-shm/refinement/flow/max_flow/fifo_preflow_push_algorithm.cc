@@ -44,6 +44,26 @@ void FIFOPreflowPushAlgorithm::initialize(
   initialize();
 }
 
+void FIFOPreflowPushAlgorithm::initialize(
+    const CSRGraph &graph,
+    std::span<const NodeID> reverse_edges,
+    std::span<const NodeID> sources,
+    std::span<const NodeID> sinks
+) {
+  _graph = &graph;
+  _reverse_edges = reverse_edges;
+
+  _node_status.initialize(graph.n());
+  for (const NodeID source : sources) {
+    _node_status.add_source(source);
+  }
+  for (const NodeID sink : sinks) {
+    _node_status.add_sink(sink);
+  }
+
+  initialize();
+}
+
 void FIFOPreflowPushAlgorithm::add_sources(std::span<const NodeID> sources) {
   for (const NodeID u : sources) {
     KASSERT(!_node_status.is_sink(u));

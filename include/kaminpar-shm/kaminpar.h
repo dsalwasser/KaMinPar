@@ -327,6 +327,20 @@ struct LabellingFunctionHeuristicContext {
   std::size_t max_num_rounds;
 };
 
+enum class MultiwayPiercingHeuristicKind {
+  RANDOM,
+  RELATIVE_GAIN,
+  FLOW
+};
+
+struct MultiwayPiercingHeuristicContext {
+  MultiwayPiercingHeuristicKind kind;
+
+  bool bulk_piercing;
+  double bulk_piercing_shrinking_factor;
+  NodeID bulk_piercing_round_threshold;
+};
+
 struct MultiwayFlowRefinementContext {
   double border_region_scaling_factor;
   NodeID max_border_distance;
@@ -334,6 +348,8 @@ struct MultiwayFlowRefinementContext {
   CutAlgorithm cut_algorithm;
   IsolatingCutHeuristicContext isolating_cut_heuristic;
   LabellingFunctionHeuristicContext labelling_function_heuristic;
+
+  MultiwayPiercingHeuristicContext piercing;
 
   bool unconstrained;
   bool abort_on_candidate_cut;

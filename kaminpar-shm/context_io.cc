@@ -403,6 +403,27 @@ get_labelling_function_initialization_strategies() {
   };
 }
 
+std::ostream &operator<<(std::ostream &out, MultiwayPiercingHeuristicKind piercing_heuristic) {
+  switch (piercing_heuristic) {
+  case MultiwayPiercingHeuristicKind::RANDOM:
+    return out << "random";
+  case MultiwayPiercingHeuristicKind::RELATIVE_GAIN:
+    return out << "relative-gain";
+  case MultiwayPiercingHeuristicKind::FLOW:
+    return out << "twoway-flow";
+  }
+
+  return out << "<invalid>";
+}
+
+std::unordered_map<std::string, MultiwayPiercingHeuristicKind> get_multiway_piercing_heuristics() {
+  return {
+      {"random", MultiwayPiercingHeuristicKind::RANDOM},
+      {"relative-gain", MultiwayPiercingHeuristicKind::RELATIVE_GAIN},
+      {"twoway-flow", MultiwayPiercingHeuristicKind::FLOW},
+  };
+}
+
 std::ostream &operator<<(std::ostream &out, InitialRefinementAlgorithm algorithm) {
   switch (algorithm) {
   case InitialRefinementAlgorithm::NOOP:

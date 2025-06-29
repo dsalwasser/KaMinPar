@@ -737,6 +737,16 @@ CLI::Option_group *create_multiway_flow_refinement_options(CLI::App *app, Contex
       ->capture_default_str();
 
   multiway_flow
+      ->add_option("--r-multiway-flow-piercing-heuristic", ctx.refinement.multiway_flow.piercing.kind)
+      ->transform(CLI::CheckedTransformer(get_multiway_piercing_heuristics(), CLI::ignore_case))
+      ->capture_default_str();
+  multiway_flow
+      ->add_option(
+          "--r-multiway-flow-bulk-piercing", ctx.refinement.multiway_flow.piercing.bulk_piercing
+      )
+      ->capture_default_str();
+
+  multiway_flow
       ->add_option("--r-multiway-flow-unconstrained", ctx.refinement.multiway_flow.unconstrained)
       ->capture_default_str();
   multiway_flow
