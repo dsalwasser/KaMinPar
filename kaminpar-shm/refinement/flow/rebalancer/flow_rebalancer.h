@@ -1,45 +1,58 @@
 #pragma once
 
 #include <span>
-#include <utility>
 
 #include "kaminpar-shm/kaminpar.h"
-#include "kaminpar-shm/refinement/flow/rebalancer/gain_cache.h"
+#include "kaminpar-shm/refinement/flow/flow_network/border_region.h"
+#include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
 
 #include "kaminpar-common/datastructures/binary_heap.h"
 #include "kaminpar-common/datastructures/static_array.h"
 
 namespace kaminpar::shm {
 
-struct RebalancerResult {
-  bool balanced;
-  EdgeWeight gain;
-  std::span<const NodeID> moved_nodes;
-};
-
-template <typename PartitionedGraph, typename Graph> class GreedyBalancerBase {
-  using RelativeGain = float;
-  using PriorityQueue = BinaryMaxHeap<RelativeGain>;
-  using GainCache = NonConcurrentDenseGainCache<PartitionedGraph, Graph>;
-
+class FlowRebalancer {
+public:
   struct Move {
-    BlockID block;
-    RelativeGain relative_gain;
+    NodeID node;
+    BlockID target_block;
   };
 
-protected:
-  GreedyBalancerBase(std::span<const BlockWeight> max_block_weights)
-      : _max_block_weights(max_block_weights) {};
+  struct Result {
+    bool balanced;
 
-  void initialize() {
-    if (_priority_queue.capacity() < _graph->n()) {
-      _priority_queue.resize(_graph->n());
-    }
+    EdgeWeight gain;
+    std::span<const Move> moves;
 
-    if (_target_blocks.size() < _graph->n()) {
-      _target_blocks.resize(_graph->n(), static_array::noinit);
+    [[nodiscard]] static Result failure() {
+      return Result(false, 0, {});
     }
-  }
+  };
+
+  virtual void initialize(const BorderRegion &border_region, const FlowNetwork &flow_network) = 0;
+
+  [[nodiscard]] virtual Result rebalance(BlockID overloaded_block) = 0;
+
+  virtual void revert_moves() = 0;
+};
+
+template <typename Graph, typename PartitionedGraph, typename GainCache>
+class FlowRebalancerBase : public FlowRebalancer {
+  using RelativeGain = float;
+  using PriorityQueue = BinaryMaxHeap<RelativeGain>;
+
+public:
+  FlowRebalancerBase(
+      PartitionedGraph &p_graph,
+      GainCache &gain_cache,
+      std::span<const BlockWeight> max_block_weights
+  )
+      : _max_block_weights(max_block_weights),
+        _graph(p_graph.graph()),
+        _p_graph(p_graph),
+        _gain_cache(gain_cache),
+        _priority_queue(_graph.n()),
+        _target_blocks(_graph.n(), static_array::noinit) {};
 
   [[nodiscard]] bool has_next_node() const {
     return !_priority_queue.empty();
@@ -51,10 +64,6 @@ protected:
 
     const BlockID target_block = _target_blocks[u];
     return {u, target_block};
-  }
-
-  void clear_nodes() {
-    _priority_queue.clear();
   }
 
   void insert_node(const NodeID u) {
@@ -71,10 +80,14 @@ protected:
     const EdgeWeight gain = _gain_cache.gain(u, source_block, target_block);
     _gain_cache.move(u, source_block, target_block);
 
-    _p_graph->set_block(u, target_block);
-    _graph->adjacent_nodes(u, [&](const NodeID v) { update_node(v); });
+    _p_graph.set_block(u, target_block);
+    _graph.adjacent_nodes(u, [&](const NodeID v) { update_node(v); });
 
     return gain;
+  }
+
+  void clear_nodes() {
+    _priority_queue.clear();
   }
 
 private:
@@ -93,26 +106,25 @@ private:
     _target_blocks[u] = target_block;
   }
 
-  [[nodiscard]] Move compute_best_move(const NodeID u) const {
-    const BlockID u_block = _p_graph->block(u);
-    const NodeWeight u_weight = _graph->node_weight(u);
+  [[nodiscard]] std::pair<BlockID, RelativeGain> compute_best_move(const NodeID u) const {
+    const BlockID u_block = _p_graph.block(u);
+    const NodeWeight u_weight = _graph.node_weight(u);
 
     BlockID target_block = kInvalidBlockID;
     BlockWeight target_block_weight = std::numeric_limits<BlockWeight>::max();
     EdgeWeight target_block_connection = std::numeric_limits<RelativeGain>::min();
 
-    const BlockID num_blocks = _p_graph->k();
-    for (BlockID block = 0; block < num_blocks; ++block) {
+    for (BlockID block = 0, k = _p_graph.k(); block < k; ++block) {
       if (block == u_block) {
         continue;
       }
 
-      const BlockWeight block_weight = _p_graph->block_weight(block);
+      const BlockWeight block_weight = _p_graph.block_weight(block);
       if (block_weight + u_weight > _max_block_weights[block]) {
         continue;
       }
 
-      const EdgeWeight block_connection = _gain_cache.connection(u, block);
+      const EdgeWeight block_connection = _gain_cache.conn(u, block);
       if (block_connection > target_block_connection ||
           (block_connection == target_block_connection && block_weight < target_block_weight)) {
         target_block = block;
@@ -125,7 +137,7 @@ private:
       return {kInvalidBlockID, 0};
     }
 
-    const EdgeWeight from_connection = _gain_cache.connection(u, u_block);
+    const EdgeWeight from_connection = _gain_cache.conn(u, u_block);
     const EdgeWeight absolute_gain = target_block_connection - from_connection;
 
     const RelativeGain relative_gain = compute_relative_gain(absolute_gain, u_weight);
@@ -141,10 +153,9 @@ private:
 protected:
   std::span<const BlockWeight> _max_block_weights;
 
-  PartitionedGraph *_p_graph;
-  const Graph *_graph;
-
-  GainCache _gain_cache;
+  const Graph &_graph;
+  PartitionedGraph &_p_graph;
+  GainCache &_gain_cache;
 
 private:
   PriorityQueue _priority_queue;

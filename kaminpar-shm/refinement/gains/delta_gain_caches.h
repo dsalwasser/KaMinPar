@@ -28,6 +28,7 @@ template <typename GainCacheType> class GenericDeltaGainCache {
 public:
   using GainCache = GainCacheType;
   using Graph = typename GainCache::Graph;
+  using DeltaPartitionedGraph = typename GainCache::DeltaPartitionedGraph;
 
   // Delta gain caches should only be used with GainCaches that iterate over all blocks, since there
   // might be new connections to non-adjacent blocks in the delta graph. These connections might be
@@ -64,12 +65,19 @@ public:
   }
 
   KAMINPAR_INLINE void move(const NodeID u, const BlockID block_from, const BlockID block_to) {
-    reified(_d_graph, [&](const auto &graph) {
-      graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight weight) {
+    if constexpr (std::is_same_v<Graph, CSRGraph>) {
+      _d_graph.graph().adjacent_nodes(u, [&](const NodeID v, const EdgeWeight weight) {
         _gain_cache_delta[index(v, block_from)] -= weight;
         _gain_cache_delta[index(v, block_to)] += weight;
       });
-    });
+    } else {
+      reified(_d_graph, [&](const auto &graph) {
+        graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight weight) {
+          _gain_cache_delta[index(v, block_from)] -= weight;
+          _gain_cache_delta[index(v, block_to)] += weight;
+        });
+      });
+    }
   }
 
   KAMINPAR_INLINE void clear() {
@@ -100,6 +108,7 @@ template <typename GainCacheType> class LargeKGenericDeltaGainCache {
 public:
   using GainCache = GainCacheType;
   using Graph = typename GainCache::Graph;
+  using DeltaPartitionedGraph = typename GainCache::DeltaPartitionedGraph;
 
   constexpr static bool kIteratesExactGains = GainCache::kIteratesExactGains;
 

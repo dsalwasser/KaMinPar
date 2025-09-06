@@ -288,20 +288,24 @@ struct PiercingHeuristicContext {
   NodeID bulk_piercing_round_threshold;
 };
 
+struct FlowRebalancerContext {
+  bool enabled;
+
+  bool dynamic_rebalancer;
+  bool rebalance_both_cuts;
+
+  bool abort_on_candidate_cut;
+  bool abort_on_improved_cut;
+  bool abort_on_stable_improved_cut;
+};
+
 struct FlowCutterContext {
   bool use_whfc;
+  bool abort_on_first_cut;
 
   PreflowPushContext flow;
   PiercingHeuristicContext piercing;
-};
-
-struct FlowRebalancerContext {
-  bool enabled;
-  bool dynamic_rebalancer;
-  bool use_abort_criterion;
-  bool abort_on_first_cut;
-  bool abort_on_improved_cut;
-  bool abort_on_candidate_cut;
+  FlowRebalancerContext rebalancer;
 };
 
 struct TwowayFlowRefinementContext {
@@ -315,7 +319,6 @@ struct TwowayFlowRefinementContext {
   FlowSchedulerContext scheduler;
   FlowNetworkConstructionContext construction;
   FlowCutterContext flow_cutter;
-  FlowRebalancerContext rebalancer;
 };
 
 struct JetRefinementContext {

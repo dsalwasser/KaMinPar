@@ -11,6 +11,7 @@
 #include "kaminpar-shm/refinement/flow/flow_network/border_region.h"
 #include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
 #include "kaminpar-shm/refinement/flow/flow_network/quotient_graph.h"
+#include "kaminpar-shm/refinement/gains/sparse_gain_cache.h"
 
 namespace kaminpar::shm {
 
@@ -38,6 +39,8 @@ public:
   using Move = FlowCutterAlgorithm::Move;
   using Result = FlowCutterAlgorithm::Result;
 
+  using GainCache = NormalSparseGainCache<CSRGraph, PartitionedCSRGraph, DeltaPartitionedCSRGraph>;
+
 public:
   FlowRefiner(
       const PartitionContext &p_ctx,
@@ -46,6 +49,7 @@ public:
       const QuotientGraph &q_graph,
       const PartitionedCSRGraph &p_graph,
       const CSRGraph &graph,
+      GainCache &gain_cache,
       const TimePoint &start_time
   );
 

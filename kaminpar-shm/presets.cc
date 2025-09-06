@@ -227,6 +227,7 @@ Context create_default_context() {
                                       .flow_cutter =
                                           {
                                               .use_whfc = false,
+                                              .abort_on_first_cut = false,
                                               .flow =
                                                   {
                                                       .global_relabeling_heuristic = true,
@@ -241,16 +242,15 @@ Context create_default_context() {
                                                       .bulk_piercing_shrinking_factor = 0.55,
                                                       .bulk_piercing_round_threshold = 5,
                                                   },
-                                          },
-                                      .rebalancer =
-                                          {
-                                              .enabled = false,
-                                              .dynamic_rebalancer = false,
-                                              .use_abort_criterion = false,
-                                              .abort_on_first_cut = false,
-                                              .abort_on_improved_cut = false,
-                                              .abort_on_candidate_cut = true,
-
+                                              .rebalancer =
+                                                  {
+                                                      .enabled = false,
+                                                      .dynamic_rebalancer = false,
+                                                      .rebalance_both_cuts = false,
+                                                      .abort_on_candidate_cut = true,
+                                                      .abort_on_improved_cut = false,
+                                                      .abort_on_stable_improved_cut = false,
+                                                  },
                                           },
                                   },
                           },
@@ -300,6 +300,7 @@ Context create_default_context() {
                               .flow_cutter =
                                   {
                                       .use_whfc = false,
+                                      .abort_on_first_cut = false,
                                       .flow =
                                           {
                                               .global_relabeling_heuristic = true,
@@ -314,16 +315,15 @@ Context create_default_context() {
                                               .bulk_piercing_shrinking_factor = 0.55,
                                               .bulk_piercing_round_threshold = 5,
                                           },
-                                  },
-                              .rebalancer =
-                                  {
-                                      .enabled = false,
-                                      .dynamic_rebalancer = false,
-                                      .use_abort_criterion = false,
-                                      .abort_on_first_cut = false,
-                                      .abort_on_improved_cut = false,
-                                      .abort_on_candidate_cut = true,
-
+                                      .rebalancer =
+                                          {
+                                              .enabled = false,
+                                              .dynamic_rebalancer = false,
+                                              .rebalance_both_cuts = false,
+                                              .abort_on_candidate_cut = true,
+                                              .abort_on_improved_cut = false,
+                                              .abort_on_stable_improved_cut = false,
+                                          },
                                   },
                           },
                   },
@@ -390,6 +390,7 @@ Context create_default_context() {
                       .flow_cutter =
                           {
                               .use_whfc = false,
+                              .abort_on_first_cut = false,
                               .flow =
                                   {
                                       .global_relabeling_heuristic = true,
@@ -404,16 +405,15 @@ Context create_default_context() {
                                       .bulk_piercing_shrinking_factor = 0.55,
                                       .bulk_piercing_round_threshold = 5,
                                   },
-                          },
-                      .rebalancer =
-                          {
-                              .enabled = false,
-                              .dynamic_rebalancer = false,
-                              .use_abort_criterion = false,
-                              .abort_on_first_cut = false,
-                              .abort_on_improved_cut = false,
-                              .abort_on_candidate_cut = true,
-
+                              .rebalancer =
+                                  {
+                                      .enabled = false,
+                                      .dynamic_rebalancer = false,
+                                      .rebalance_both_cuts = false,
+                                      .abort_on_candidate_cut = true,
+                                      .abort_on_improved_cut = false,
+                                      .abort_on_stable_improved_cut = false,
+                                  },
                           },
                   },
               .jet =

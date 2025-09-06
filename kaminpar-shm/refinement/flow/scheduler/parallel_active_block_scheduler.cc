@@ -54,11 +54,15 @@ bool ParallelActiveBlockScheduler::refine(
   const TimePoint start_time = Clock::now();
   QuotientGraph quotient_graph(p_graph);
 
+  if (_f_ctx.flow_cutter.rebalancer.enabled) {
+    _gain_cache.initialize(graph, p_graph);
+  }
+
   const bool run_sequentially = _f_ctx.run_sequentially || num_threads == num_parallel_searches;
   LazyVector<FlowRefiner> refiners(
       [&] {
         return FlowRefiner(
-            p_ctx, _f_ctx, run_sequentially, quotient_graph, p_graph, graph, start_time
+            p_ctx, _f_ctx, run_sequentially, quotient_graph, p_graph, graph, _gain_cache, start_time
         );
       },
       num_parallel_searches
@@ -154,6 +158,21 @@ bool ParallelActiveBlockScheduler::refine(
 
                 quotient_graph.add_cut_edges(new_cut_edges);
                 quotient_graph.add_gain(block1, block2, result.gain);
+
+                if (_f_ctx.flow_cutter.rebalancer.enabled) {
+                  for (const Move &move : flow_result.moves) {
+                    const BlockID old_block = move.old_block;
+
+                    // If the node was not in its expected block, it has not been moved.
+                    // Thus, the gain must not be updated.
+                    const bool move_conflict = old_block == kInvalidBlockID;
+                    if (move_conflict) {
+                      continue;
+                    }
+
+                    _gain_cache.move(move.node, old_block, move.new_block);
+                  }
+                }
               }
             }
           }
@@ -163,6 +182,17 @@ bool ParallelActiveBlockScheduler::refine(
       if (_f_ctx.free_memory_after_round) {
         refiners.for_each([&](FlowRefiner &refiner) { refiner.free(); });
       }
+
+      KASSERT(
+          metrics::is_balanced(p_graph, p_ctx),
+          "Computed an imbalanced move sequence",
+          assert::heavy
+      );
+      KASSERT(
+          metrics::edge_cut_seq(p_graph) == cut_value,
+          "Computed an invalid new cut value",
+          assert::heavy
+      );
     }
 
     const EdgeWeight round_gain = prev_cut_value - cut_value;
@@ -214,6 +244,7 @@ void ParallelActiveBlockScheduler::apply_moves(
     std::span<const Move> moves, QuotientCutEdges &new_cut_edges
 ) {
   new_cut_edges.clear();
+
   for (const Move &move : moves) {
     KASSERT(
         _p_graph->block(move.node) == move.old_block,
@@ -239,6 +270,12 @@ void ParallelActiveBlockScheduler::apply_moves(
       }
     });
   }
+
+  if (_f_ctx.flow_cutter.rebalancer.enabled) {
+    for (const Move &move : moves) {
+      _gain_cache.move(move.node, move.old_block, move.new_block);
+    }
+  }
 }
 
 ParallelActiveBlockScheduler::MoveAttempt ParallelActiveBlockScheduler::commit_moves_if_feasible(
@@ -259,13 +296,13 @@ ParallelActiveBlockScheduler::MoveAttempt ParallelActiveBlockScheduler::commit_m
   const EdgeWeight new_cut_value = cut_value - actual_gain;
 
   KASSERT(
-      metrics::edge_cut_seq(*_p_graph) == new_cut_value,
-      "Computed an invalid new cut value",
+      metrics::is_balanced(*_p_graph, *_p_ctx),
+      "Computed an imbalanced move sequence",
       assert::heavy
   );
   KASSERT(
-      metrics::is_balanced(*_p_graph, *_p_ctx),
-      "Computed an imbalanced move sequence",
+      metrics::edge_cut_seq(*_p_graph) == new_cut_value,
+      "Computed an invalid new cut value",
       assert::heavy
   );
 

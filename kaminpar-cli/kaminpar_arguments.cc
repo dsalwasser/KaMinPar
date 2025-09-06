@@ -651,6 +651,12 @@ CLI::Option_group *create_twoway_flow_refinement_options(CLI::App *app, Context 
 
   twoway_flow->add_option("--r-twoway-flow-whfc", ctx.refinement.twoway_flow.flow_cutter.use_whfc)
       ->capture_default_str();
+  twoway_flow
+      ->add_option(
+          "--r-twoway-flow-abort-on-first-cut",
+          ctx.refinement.twoway_flow.flow_cutter.abort_on_first_cut
+      )
+      ->capture_default_str();
 
   twoway_flow
       ->add_option(
@@ -678,36 +684,38 @@ CLI::Option_group *create_twoway_flow_refinement_options(CLI::App *app, Context 
       ->capture_default_str();
 
   twoway_flow
-      ->add_option("--r-twoway-flow-unconstrained", ctx.refinement.twoway_flow.rebalancer.enabled)
+      ->add_option(
+          "--r-twoway-flow-rebalancing", ctx.refinement.twoway_flow.flow_cutter.rebalancer.enabled
+      )
       ->capture_default_str();
   twoway_flow
       ->add_option(
           "--r-twoway-flow-dynamic-rebalancer",
-          ctx.refinement.twoway_flow.rebalancer.dynamic_rebalancer
+          ctx.refinement.twoway_flow.flow_cutter.rebalancer.dynamic_rebalancer
       )
       ->capture_default_str();
   twoway_flow
       ->add_option(
-          "--r-twoway-flow-use-abort-criterion",
-          ctx.refinement.twoway_flow.rebalancer.use_abort_criterion
-      )
-      ->capture_default_str();
-  twoway_flow
-      ->add_option(
-          "--r-twoway-flow-abort-on-first-cut",
-          ctx.refinement.twoway_flow.rebalancer.abort_on_first_cut
-      )
-      ->capture_default_str();
-  twoway_flow
-      ->add_option(
-          "--r-twoway-flow-abort-on-improved-cut",
-          ctx.refinement.twoway_flow.rebalancer.abort_on_improved_cut
+          "--r-twoway-flow-rebalance-both-cuts",
+          ctx.refinement.twoway_flow.flow_cutter.rebalancer.rebalance_both_cuts
       )
       ->capture_default_str();
   twoway_flow
       ->add_option(
           "--r-twoway-flow-abort-on-candidate-cut",
-          ctx.refinement.twoway_flow.rebalancer.abort_on_candidate_cut
+          ctx.refinement.twoway_flow.flow_cutter.rebalancer.abort_on_candidate_cut
+      )
+      ->capture_default_str();
+  twoway_flow
+      ->add_option(
+          "--r-twoway-flow-abort-on-improved-cut",
+          ctx.refinement.twoway_flow.flow_cutter.rebalancer.abort_on_improved_cut
+      )
+      ->capture_default_str();
+  twoway_flow
+      ->add_option(
+          "--r-twoway-flow-abort-on-stable-improved-cut",
+          ctx.refinement.twoway_flow.flow_cutter.rebalancer.abort_on_stable_improved_cut
       )
       ->capture_default_str();
 

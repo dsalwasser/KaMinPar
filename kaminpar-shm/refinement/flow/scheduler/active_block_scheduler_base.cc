@@ -47,6 +47,7 @@ FlowRefiner::FlowRefiner(
     const QuotientGraph &q_graph,
     const PartitionedCSRGraph &p_graph,
     const CSRGraph &graph,
+    GainCache &gain_cache,
     const TimePoint &start_time
 )
     : _p_graph(p_graph),
@@ -55,18 +56,21 @@ FlowRefiner::FlowRefiner(
       _flow_network_constructor(f_ctx.construction, run_sequentially, p_graph, graph) {
 #ifdef KAMINPAR_WHFC_FOUND
   if (f_ctx.flow_cutter.use_whfc) {
-    _flow_cutter_algorithm =
-        std::make_unique<HyperFlowCutter>(p_ctx, f_ctx.flow_cutter, run_sequentially);
+    _flow_cutter_algorithm = std::make_unique<HyperFlowCutter>(
+        p_ctx, f_ctx.flow_cutter, run_sequentially, p_graph, gain_cache
+    );
   } else {
-    _flow_cutter_algorithm =
-        std::make_unique<FlowCutter>(p_ctx, f_ctx.flow_cutter, run_sequentially);
+    _flow_cutter_algorithm = std::make_unique<FlowCutter>(
+        p_ctx, f_ctx.flow_cutter, run_sequentially, p_graph, gain_cache
+    );
   }
 #else
   if (f_ctx.flow_cutter.use_whfc) {
     LOG_WARNING << "WHFC requested but not available; using built-in FlowCutter as fallback.";
   }
 
-  _flow_cutter_algorithm = std::make_unique<FlowCutter>(p_ctx, f_ctx.flow_cutter, run_sequentially);
+  _flow_cutter_algorithm =
+      std::make_unique<FlowCutter>(p_ctx, f_ctx.flow_cutter, run_sequentially, p_graph, gain_cache);
 #endif
 
   _flow_cutter_algorithm->set_time_limit(f_ctx.time_limit, start_time);

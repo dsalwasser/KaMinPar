@@ -799,14 +799,22 @@ std::ostream &operator<<(std::ostream &out, const RefinementContext &r_ctx) {
           << r_ctx.twoway_flow.flow_cutter.flow.global_relabeling_frequency << "\n";
     }
 
-    out << "  Rebalancing:                " << yn(r_ctx.twoway_flow.rebalancer.enabled) << "\n";
-    if (r_ctx.twoway_flow.rebalancer.enabled) {
+    out << "  Rebalancing:                " << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.enabled)
+        << "\n";
+    if (r_ctx.twoway_flow.flow_cutter.rebalancer.enabled) {
       out << "    Rebalancer:               "
-          << yn(r_ctx.twoway_flow.rebalancer.dynamic_rebalancer, "dynamic", "static") << "\n";
-      out << "    Abort on first cut:       " << yn(r_ctx.twoway_flow.rebalancer.abort_on_first_cut)
+          << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.dynamic_rebalancer, "dynamic", "static")
           << "\n";
+      out << "    Rebalance both cuts:      "
+          << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.rebalance_both_cuts) << "\n";
+      out << "    Abort on first cut:       "
+          << yn(r_ctx.twoway_flow.flow_cutter.abort_on_first_cut) << "\n";
       out << "    Abort on candidate cut:   "
-          << yn(r_ctx.twoway_flow.rebalancer.abort_on_candidate_cut) << "\n";
+          << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.abort_on_candidate_cut) << "\n";
+      out << "    Abort on improved cut:    "
+          << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.abort_on_improved_cut) << "\n";
+      out << "    Abort on stable imp. cut: "
+          << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.abort_on_stable_improved_cut) << "\n";
     }
   }
 

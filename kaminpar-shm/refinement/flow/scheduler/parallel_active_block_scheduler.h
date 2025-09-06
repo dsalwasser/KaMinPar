@@ -6,11 +6,13 @@
 #include <utility>
 
 #include "kaminpar-shm/datastructures/csr_graph.h"
+#include "kaminpar-shm/datastructures/delta_partitioned_graph.h"
 #include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/kaminpar.h"
 #include "kaminpar-shm/refinement/flow/flow_network/quotient_graph.h"
 #include "kaminpar-shm/refinement/flow/scheduler/active_block_scheduler_base.h"
 #include "kaminpar-shm/refinement/flow/scheduler/scheduling/active_block_scheduling.h"
+#include "kaminpar-shm/refinement/gains/sparse_gain_cache.h"
 
 #include "kaminpar-common/datastructures/scalable_vector.h"
 #include "kaminpar-common/datastructures/static_array.h"
@@ -27,7 +29,10 @@ class ParallelActiveBlockScheduler {
 
   using Clock = FlowRefiner::Clock;
   using TimePoint = FlowRefiner::TimePoint;
+
   using Move = FlowRefiner::Move;
+
+  using GainCache = NormalSparseGainCache<CSRGraph, PartitionedCSRGraph, DeltaPartitionedCSRGraph>;
 
   enum class MoveResult {
     IMBALANCE_CONFLICT,
@@ -99,6 +104,8 @@ private:
   PartitionedCSRGraph *_p_graph;
   const CSRGraph *_graph;
   const PartitionContext *_p_ctx;
+
+  GainCache _gain_cache;
 
   StaticArray<bool> _active_blocks;
   std::unique_ptr<ActiveBlockScheduling> _active_block_scheduling;

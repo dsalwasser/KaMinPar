@@ -32,8 +32,19 @@ bool SequentialActiveBlockScheduler::refine(
   const TimePoint start_time = Clock::now();
   QuotientGraph quotient_graph(p_graph);
 
+  if (_f_ctx.flow_cutter.rebalancer.enabled) {
+    _gain_cache.initialize(graph, p_graph);
+  }
+
   FlowRefiner refiner(
-      p_ctx, _f_ctx, _f_ctx.run_sequentially, quotient_graph, p_graph, graph, start_time
+      p_ctx,
+      _f_ctx,
+      _f_ctx.run_sequentially,
+      quotient_graph,
+      p_graph,
+      graph,
+      _gain_cache,
+      start_time
   );
 
   std::size_t num_round = 0;
@@ -72,14 +83,13 @@ bool SequentialActiveBlockScheduler::refine(
         apply_moves(result.moves);
 
         KASSERT(
-            metrics::edge_cut_seq(p_graph) == new_cut_value,
-            "Computed an invalid gain",
-            assert::heavy
-        );
-
-        KASSERT(
             metrics::is_balanced(p_graph, p_ctx),
             "Computed an imbalanced move sequence",
+            assert::heavy
+        );
+        KASSERT(
+            metrics::edge_cut_seq(p_graph) == new_cut_value,
+            "Computed an invalid new cut value",
             assert::heavy
         );
 
@@ -149,6 +159,12 @@ void SequentialActiveBlockScheduler::apply_moves(std::span<const Move> moves) {
         _new_cut_edges.emplace_back(u, v);
       }
     });
+  }
+
+  if (_f_ctx.flow_cutter.rebalancer.enabled) {
+    for (const Move &move : moves) {
+      _gain_cache.move(move.node, move.old_block, move.new_block);
+    }
   }
 }
 

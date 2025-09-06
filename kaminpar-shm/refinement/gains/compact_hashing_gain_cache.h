@@ -28,6 +28,8 @@ namespace kaminpar::shm {
 
 template <
     typename GraphType,
+    typename PartitionedGraphType,
+    typename DeltaPartitionedGraphType,
     template <typename> typename DeltaGainCacheType,
     bool iterate_nonadjacent_blocks,
     bool iterate_exact_gains = false>
@@ -40,14 +42,18 @@ class CompactHashingGainCache {
   constexpr static UnsignedEdgeWeight kWeightedDegreeMask = ~kWeightedDegreeLock;
 
 public:
-  using Graph = GraphType;
-
   using Self = CompactHashingGainCache<
       GraphType,
+      PartitionedGraphType,
+      DeltaPartitionedGraphType,
       DeltaGainCacheType,
       iterate_nonadjacent_blocks,
       iterate_exact_gains>;
 
+  using Graph = GraphType;
+  using PartitionedGraph = PartitionedGraphType;
+
+  using DeltaPartitionedGraph = DeltaPartitionedGraphType;
   using DeltaGainCache = DeltaGainCacheType<Self>;
 
   // If set to true, gains() will iterate over all blocks, including those not adjacent to the node.
@@ -393,8 +399,7 @@ private:
   template <typename Lambda>
   KAMINPAR_INLINE decltype(auto) with_hash_table(const NodeID node, Lambda &&l) const {
     return with_hash_table_impl(
-        node,
-        [&]<typename Width>(const Width *storage, const std::size_t size) {
+        node, [&]<typename Width>(const Width *storage, const std::size_t size) {
           return l(CompactHashMap<const Width, true>(storage, size, _bits_for_key));
         }
     );
@@ -403,8 +408,7 @@ private:
   template <typename Lambda>
   KAMINPAR_INLINE decltype(auto) with_hash_table(const NodeID node, Lambda &&l) {
     return static_cast<const Self *>(this)->with_hash_table_impl(
-        node,
-        [&]<typename Width>(const Width *storage, const std::size_t size) {
+        node, [&]<typename Width>(const Width *storage, const std::size_t size) {
           return l(CompactHashMap<Width, true>(const_cast<Width *>(storage), size, _bits_for_key));
         }
     );
@@ -427,21 +431,27 @@ private:
       break;
 
     case 2:
-      return l(reinterpret_cast<const std::uint16_t *>(
-          reinterpret_cast<const std::uint8_t *>(_gain_cache.data()) + start
-      ));
+      return l(
+          reinterpret_cast<const std::uint16_t *>(
+              reinterpret_cast<const std::uint8_t *>(_gain_cache.data()) + start
+          )
+      );
       break;
 
     case 4:
-      return l(reinterpret_cast<const std::uint32_t *>(
-          reinterpret_cast<const std::uint8_t *>(_gain_cache.data()) + start
-      ));
+      return l(
+          reinterpret_cast<const std::uint32_t *>(
+              reinterpret_cast<const std::uint8_t *>(_gain_cache.data()) + start
+          )
+      );
       break;
 
     case 8:
-      return l(reinterpret_cast<const std::uint64_t *>(
-          reinterpret_cast<const std::uint8_t *>(_gain_cache.data()) + start
-      ));
+      return l(
+          reinterpret_cast<const std::uint64_t *>(
+              reinterpret_cast<const std::uint8_t *>(_gain_cache.data()) + start
+          )
+      );
       break;
     }
 
@@ -494,11 +504,26 @@ private:
   }};
 };
 
-template <typename Graph>
-using NormalCompactHashingGainCache = CompactHashingGainCache<Graph, GenericDeltaGainCache, true>;
+template <
+    typename GraphType,
+    typename PartitionedGraphType = PartitionedGraph,
+    typename DeltaPartitionedGraphType = DeltaPartitionedGraph>
+using NormalCompactHashingGainCache = CompactHashingGainCache<
+    GraphType,
+    PartitionedGraphType,
+    DeltaPartitionedGraphType,
+    GenericDeltaGainCache,
+    true>;
 
-template <typename Graph>
-using LargeKCompactHashingGainCache =
-    CompactHashingGainCache<Graph, LargeKGenericDeltaGainCache, false>;
+template <
+    typename GraphType,
+    typename PartitionedGraphType = PartitionedGraph,
+    typename DeltaPartitionedGraphType = DeltaPartitionedGraph>
+using LargeKCompactHashingGainCache = CompactHashingGainCache<
+    GraphType,
+    PartitionedGraphType,
+    DeltaPartitionedGraphType,
+    LargeKGenericDeltaGainCache,
+    false>;
 
 } // namespace kaminpar::shm

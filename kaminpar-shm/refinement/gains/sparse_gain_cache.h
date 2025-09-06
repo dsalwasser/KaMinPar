@@ -20,6 +20,7 @@
  ******************************************************************************/
 #pragma once
 
+#include "kaminpar-shm/datastructures/delta_partitioned_graph.h"
 #ifdef KAMINPAR_SPARSEHASH_FOUND
 #include <google/dense_hash_map>
 #else // KAMINPAR_SPARSEHASH_FOUND
@@ -48,6 +49,8 @@ namespace kaminpar::shm {
 
 template <
     typename GraphType,
+    typename PartitionedGraphType,
+    typename DeltaPartitionedGraphType,
     template <typename> typename DeltaGainCacheType,
     bool iterate_nonadjacent_blocks,
     bool iterate_exact_gains = false>
@@ -90,14 +93,18 @@ class SparseGainCache {
   };
 
 public:
-  using Graph = GraphType;
-
   using Self = SparseGainCache<
       GraphType,
+      PartitionedGraphType,
+      DeltaPartitionedGraphType,
       DeltaGainCacheType,
       iterate_nonadjacent_blocks,
       iterate_exact_gains>;
 
+  using Graph = GraphType;
+  using PartitionedGraph = PartitionedGraphType;
+
+  using DeltaPartitionedGraph = DeltaPartitionedGraphType;
   using DeltaGainCache = DeltaGainCacheType<Self>;
 
   // gains() will iterate over all blocks, including those not adjacent to the node.
@@ -107,14 +114,13 @@ public:
   // the gain consumer with the total edge weight between the node and nodes in the specific block.
   constexpr static bool kIteratesExactGains = iterate_exact_gains;
 
+  SparseGainCache() {}
+
   SparseGainCache(
-      const Context &ctx, const NodeID preallocate_n, [[maybe_unused]] BlockID preallocate_k
-  )
-      : _ctx(ctx),
-        // Since we do not know the size of the gain cache in advance (depends on vertex degrees),
-        // we cannot preallocate it
-        _gain_cache(0, static_array::noinit),
-        _weighted_degrees(preallocate_n, static_array::noinit) {}
+      [[maybe_unused]] const Context &ctx,
+      [[maybe_unused]] const NodeID preallocate_n,
+      [[maybe_unused]] const BlockID preallocate_k
+  ) {}
 
   void initialize(const Graph &graph, const PartitionedGraph &p_graph) {
     _graph = &graph;
@@ -146,10 +152,13 @@ public:
       // Compute the degree that we use to determine the threshold degree bucket: nodes in buckets
       // up to the one determined by this degree are assigned to the dense part, the other ones to
       // the sparse part.
+      const EdgeID degree_threshold = _k;
+      /* @todo
       const EdgeID degree_threshold = std::max<EdgeID>(
           _k * _ctx.refinement.kway_fm.k_based_high_degree_threshold, // Usually k * 1
           _ctx.refinement.kway_fm.constant_high_degree_threshold      // Usually 0
       );
+      */
 
       // (i) compute size of the dense part (== hash tables) ...
       for (_bucket_threshold = 0;
@@ -185,14 +194,14 @@ public:
 
     if (_gain_cache.size() < gc_size) {
       SCOPED_TIMER("Allocation");
-      _gain_cache.resize(gc_size);
+      _gain_cache.resize(gc_size, static_array::noinit);
       DBG << "Allocating gain cache: " << _gain_cache.size() * sizeof(UnsignedEdgeWeight)
           << " bytes";
     }
 
     if (_weighted_degrees.size() < _n) {
       SCOPED_TIMER("Allocation");
-      _weighted_degrees.resize(_n);
+      _weighted_degrees.resize(_n, static_array::noinit);
     }
 
     init_buckets();
@@ -402,8 +411,8 @@ private:
     return static_cast<EdgeWeight>(create_dense_wrapper(node).get(block));
   }
 
-  [[nodiscard]] KAMINPAR_INLINE std::pair<std::size_t, std::size_t> index_dense(const NodeID node
-  ) const {
+  [[nodiscard]] KAMINPAR_INLINE std::pair<std::size_t, std::size_t>
+  index_dense(const NodeID node) const {
     const int bucket = find_bucket(node);
     const std::size_t size = lowest_degree_in_bucket<NodeID>(bucket + 1);
     KASSERT(math::is_power_of_2(size));
@@ -495,8 +504,6 @@ private:
     }
   }
 
-  const Context &_ctx;
-
   const Graph *_graph = nullptr;
   const PartitionedGraph *_p_graph = nullptr;
 
@@ -529,10 +536,26 @@ private:
   }};
 };
 
-template <typename Graph>
-using NormalSparseGainCache = SparseGainCache<Graph, GenericDeltaGainCache, true>;
+template <
+    typename GraphType,
+    typename PartitionedGraphType = PartitionedGraph,
+    typename DeltaPartitionedGraphType = DeltaPartitionedGraph>
+using NormalSparseGainCache = SparseGainCache<
+    GraphType,
+    PartitionedGraphType,
+    DeltaPartitionedGraphType,
+    GenericDeltaGainCache,
+    true>;
 
-template <typename Graph>
-using LargeKSparseGainCache = SparseGainCache<Graph, LargeKGenericDeltaGainCache, false>;
+template <
+    typename GraphType,
+    typename PartitionedGraphType = PartitionedGraph,
+    typename DeltaPartitionedGraphType = DeltaPartitionedGraph>
+using LargeKSparseGainCache = SparseGainCache<
+    GraphType,
+    PartitionedGraphType,
+    DeltaPartitionedGraphType,
+    LargeKGenericDeltaGainCache,
+    false>;
 
 } // namespace kaminpar::shm

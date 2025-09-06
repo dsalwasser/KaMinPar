@@ -7,21 +7,34 @@
  ******************************************************************************/
 #pragma once
 
+#include <algorithm>
 #include <span>
+
+#include <tbb/parallel_for.h>
 
 #include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/kaminpar.h"
 
+#include "kaminpar-common/assert.h"
 #include "kaminpar-common/datastructures/dynamic_map.h"
 #include "kaminpar-common/datastructures/scalable_vector.h"
 #include "kaminpar-common/ranges.h"
 
 namespace kaminpar::shm {
 
-class DeltaPartitionedGraph {
+template <typename PartitionedGraphType> class GenericDeltaPartitionedGraph {
+  using PartitionedGraph = PartitionedGraphType;
+
 public:
-  DeltaPartitionedGraph(const PartitionedGraph *p_graph) : _p_graph(p_graph) {
-    _node_weights = reified(*_p_graph, [&](const auto &g) { return g.raw_node_weights().view(); });
+  using Graph = PartitionedGraph::Graph;
+
+  GenericDeltaPartitionedGraph(const PartitionedGraph *p_graph) : _p_graph(p_graph) {
+    if constexpr (std::is_same_v<Graph, CSRGraph>) {
+      _node_weights = _p_graph->graph().raw_node_weights().view();
+    } else {
+      _node_weights =
+          reified(*_p_graph, [&](const auto &graph) { return graph.raw_node_weights().view(); });
+    }
     _block_weights_delta.resize(_p_graph->k());
   }
 
@@ -95,6 +108,9 @@ private:
   ScalableVector<BlockWeight> _block_weights_delta;
   DynamicFlatMap<NodeID, BlockID> _partition_delta;
 };
+
+using DeltaPartitionedGraph = GenericDeltaPartitionedGraph<PartitionedGraph>;
+using DeltaPartitionedCSRGraph = GenericDeltaPartitionedGraph<PartitionedCSRGraph>;
 
 template <typename Lambda> decltype(auto) reified(DeltaPartitionedGraph &p_graph, Lambda &&l) {
   return reified(p_graph.graph(), std::forward<Lambda>(l));
