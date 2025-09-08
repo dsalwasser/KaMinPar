@@ -152,8 +152,28 @@ FlowCutter::compute_cut(const BorderRegion &border_region, const FlowNetwork &fl
     EdgeWeight source_side_weight = prev_source_side_weight + _source_reachable_weight;
     EdgeWeight sink_side_weight = prev_sink_side_weight + _sink_reachable_weight;
 
-    const bool is_source_cut_balanced = source_side_weight <= max_source_side_weight &&
-                                        (total_weight - source_side_weight) <= max_sink_side_weight;
+    bool is_source_cut_balanced = source_side_weight <= max_source_side_weight &&
+                                  (total_weight - source_side_weight) <= max_sink_side_weight;
+    bool is_sink_cut_balanced = sink_side_weight <= max_sink_side_weight &&
+                                (total_weight - sink_side_weight) <= max_source_side_weight;
+
+    if (is_source_cut_balanced && is_sink_cut_balanced) {
+      const double source_side_cut_balance = std::min(
+          source_side_weight / static_cast<double>(max_source_side_weight),
+          (total_weight - source_side_weight) / static_cast<double>(max_sink_side_weight)
+      );
+      double sink_side_cut_balance = std::min(
+          (total_weight - sink_side_weight) / static_cast<double>(max_source_side_weight),
+          sink_side_weight / static_cast<double>(max_sink_side_weight)
+      );
+
+      if (source_side_cut_balance < sink_side_cut_balance) {
+        is_source_cut_balanced = false;
+      } else {
+        is_sink_cut_balanced = false;
+      }
+    }
+
     if (is_source_cut_balanced) {
       DBG << "Found cut for block pair " << border_region.block1() << " and "
           << border_region.block2() << " is a balanced source-side cut";
@@ -171,8 +191,6 @@ FlowCutter::compute_cut(const BorderRegion &border_region, const FlowNetwork &fl
       break;
     }
 
-    const bool is_sink_cut_balanced = sink_side_weight <= max_sink_side_weight &&
-                                      (total_weight - sink_side_weight) <= max_source_side_weight;
     if (is_sink_cut_balanced) {
       DBG << "Found cut for block pair " << border_region.block1() << " and "
           << border_region.block2() << " is a balanced sink-side cut";
@@ -270,14 +288,15 @@ FlowCutter::compute_cut(const BorderRegion &border_region, const FlowNetwork &fl
         _max_flow_algorithm->add_sources(_source_reachable_nodes);
       };
 
-      update_border_nodes(
-          kSourceTag, flow_network, _source_reachable_nodes, _source_side_border_nodes
-      );
+      update_border_nodes(kSourceTag, flow_network);
 
       const NodeWeight max_piercing_node_weight = max_source_side_weight - source_side_weight;
       const auto piercing_nodes = TIMED_SCOPE("Compute Piercing Nodes") {
+        const EdgeWeight reachable_weight = source_side_weight + sink_side_weight;
+        const bool has_unreachable_nodes = (total_weight - reachable_weight) > 0;
         return _piercing_heuristic.find_piercing_nodes(
             kSourceTag,
+            has_unreachable_nodes,
             _max_flow_algorithm->node_status(),
             _sink_reachable_nodes_marker,
             source_side_weight,
@@ -319,12 +338,15 @@ FlowCutter::compute_cut(const BorderRegion &border_region, const FlowNetwork &fl
         _max_flow_algorithm->add_sinks(_sink_reachable_nodes);
       };
 
-      update_border_nodes(kSinkTag, flow_network, _sink_reachable_nodes, _sink_side_border_nodes);
+      update_border_nodes(kSinkTag, flow_network);
 
       const NodeWeight max_piercing_node_weight = max_sink_side_weight - sink_side_weight;
       const auto piercing_nodes = TIMED_SCOPE("Compute Piercing Nodes") {
+        const EdgeWeight reachable_weight = source_side_weight + sink_side_weight;
+        const bool has_unreachable_nodes = (total_weight - reachable_weight) > 0;
         return _piercing_heuristic.find_piercing_nodes(
             kSinkTag,
+            has_unreachable_nodes,
             _max_flow_algorithm->node_status(),
             _source_reachable_nodes_marker,
             sink_side_weight,
@@ -492,22 +514,25 @@ void FlowCutter::derive_sink_side_cut(
   _sink_reachable_weight = sink_reachable_weight;
 }
 
-void FlowCutter::update_border_nodes(
-    const bool source_side,
-    const FlowNetwork &flow_network,
-    const std::span<const NodeID> reachable_nodes,
-    ScalableVector<NodeID> &border_nodes
-) {
+void FlowCutter::update_border_nodes(const bool source_side, const FlowNetwork &flow_network) {
   SCOPED_TIMER("Update Border Nodes");
 
-  border_nodes.clear();
+  const std::span<const NodeID> reachable_nodes =
+      source_side ? _source_reachable_nodes : _sink_reachable_nodes;
+
+  ScalableVector<NodeID> &border_nodes =
+      source_side ? _source_side_border_nodes : _sink_side_border_nodes;
 
   Marker<> &piercing_marker = source_side ? _source_side_piercing_node_candidates_marker
                                           : _sink_side_piercing_node_candidates_marker;
-  const CSRGraph &graph = flow_network.graph;
 
+  const Marker<> &reachable_oracle =
+      source_side ? _sink_reachable_nodes_marker : _source_reachable_nodes_marker;
+
+  const CSRGraph &graph = flow_network.graph;
   const NodeStatus &node_status = _max_flow_algorithm->node_status();
-  const std::uint8_t other_side_status = source_side ? NodeStatus::kSink : NodeStatus::kSource;
+
+  border_nodes.clear();
   for (const NodeID u : reachable_nodes) {
     bool is_border_node = false;
 
@@ -520,8 +545,8 @@ void FlowCutter::update_border_nodes(
       if (!piercing_marker.get(v)) {
         piercing_marker.set(v);
 
-        const bool reachable = node_status.has_status(v, other_side_status);
-        _piercing_heuristic.add_piercing_node_candidate(source_side, v, reachable);
+        const bool unreachable = !reachable_oracle.get(v);
+        _piercing_heuristic.add_piercing_node_candidate(source_side, v, unreachable);
       }
     });
 
