@@ -10,8 +10,6 @@
 #include "kaminpar-shm/refinement/flow/flow_network/border_region.h"
 #include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
 #include "kaminpar-shm/refinement/flow/max_flow/max_preflow_algorithm.h"
-#include "kaminpar-shm/refinement/flow/max_flow/parallel_preflow_push_algorithm.h"
-#include "kaminpar-shm/refinement/flow/max_flow/preflow_push_algorithm.h"
 #include "kaminpar-shm/refinement/flow/piercing/piercing_heuristic.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 #include "kaminpar-shm/refinement/flow/util/breadth_first_search.h"
@@ -40,17 +38,21 @@ public:
   FlowCutter(
       const PartitionContext &p_ctx,
       const FlowCutterContext &fc_ctx,
-      bool run_sequentially,
       const PartitionedCSRGraph &p_graph,
       GainCache &gain_cache
   );
 
-  [[nodiscard]] Result
-  compute_cut(const BorderRegion &border_region, const FlowNetwork &flow_network) override;
+  [[nodiscard]] Result compute_cut(
+      const BorderRegion &border_region, const FlowNetwork &flow_network, bool run_sequentially
+  ) override;
 
   void free() override;
 
 private:
+  void initialize(const BorderRegion &border_region, const FlowNetwork &flow_network);
+
+  void run_flow_cutter(const BorderRegion &border_region, const FlowNetwork &flow_network);
+
   template <bool kCollectExcessNodes>
   void derive_source_side_cut(const FlowNetwork &flow_network, std::span<const EdgeWeight> flow);
 
@@ -70,11 +72,15 @@ private:
       const FlowNetwork &flow_network
   );
 
+  [[nodiscard]] MaxPreflowAlgorithm *max_preflow_algorithm();
+
 private:
   const PartitionContext &_p_ctx;
   const FlowCutterContext &_fc_ctx;
+  bool _run_sequentially;
 
-  std::unique_ptr<MaxPreflowAlgorithm> _max_flow_algorithm;
+  std::unique_ptr<MaxPreflowAlgorithm> _sequential_max_flow_algorithm;
+  std::unique_ptr<MaxPreflowAlgorithm> _parallel_max_flow_algorithm;
 
   ScalableVector<NodeID> _source_side_border_nodes;
   ScalableVector<NodeID> _sink_side_border_nodes;

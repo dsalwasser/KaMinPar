@@ -762,8 +762,6 @@ std::ostream &operator<<(std::ostream &out, const RefinementContext &r_ctx) {
     if (r_ctx.twoway_flow.scheduler.parallel) {
       out << "    Deterministic:            " << yn(r_ctx.twoway_flow.scheduler.deterministic)
           << "\n";
-      out << "    Ignore move conflicts:    "
-          << yn(r_ctx.twoway_flow.scheduler.ignore_move_conflicts) << "\n";
       out << "    Search multiplier:        "
           << r_ctx.twoway_flow.scheduler.parallel_search_multiplier << "\n";
     }
@@ -797,6 +795,11 @@ std::ostream &operator<<(std::ostream &out, const RefinementContext &r_ctx) {
           << yn(r_ctx.twoway_flow.flow_cutter.flow.global_relabeling_heuristic) << "\n";
       out << "    Global relabeling freq.:  "
           << r_ctx.twoway_flow.flow_cutter.flow.global_relabeling_frequency << "\n";
+
+      out << "    Blocking relabel/push:    "
+          << yn(r_ctx.twoway_flow.flow_cutter.flow.parallel_blocking_resolution) << "\n";
+      out << "    Seq. discharge thresh.:   "
+          << r_ctx.twoway_flow.flow_cutter.flow.sequential_discharge_threshold << "\n";
     }
 
     out << "  Rebalancing:                " << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.enabled)

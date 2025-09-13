@@ -16,25 +16,25 @@
 
 namespace kaminpar::shm {
 
-struct PreflowPushAlgorithmStatistics {
-  std::size_t num_discharges;
-  std::size_t num_global_relabels;
-
-  void reset() {
-    num_discharges = 0;
-    num_global_relabels = 0;
-  }
-
-  void print() const {
-    LOG_STATS << "Preflow-Push Algorithm:";
-    LOG_STATS << "*  # num discharges: " << num_discharges;
-    LOG_STATS << "*  # num global relabels: " << num_global_relabels;
-  }
-};
-
 class PreflowPushAlgorithm : public MaxPreflowAlgorithm {
   SET_DEBUG(false);
   SET_STATISTICS(false);
+
+  struct Statistics {
+    std::size_t num_discharges;
+    std::size_t num_global_relabels;
+
+    void reset() {
+      num_discharges = 0;
+      num_global_relabels = 0;
+    }
+
+    void print() const {
+      LOG_STATS << "Preflow-Push Algorithm:";
+      LOG_STATS << "*  # num discharges: " << num_discharges;
+      LOG_STATS << "*  # num global relabels: " << num_global_relabels;
+    }
+  };
 
   class GlobalRelabelingThreshold {
   public:
@@ -62,6 +62,8 @@ class PreflowPushAlgorithm : public MaxPreflowAlgorithm {
     std::size_t _threshold;
     std::size_t _work;
   };
+
+  static constexpr bool kCollectActiveNodesTag = true;
 
 public:
   PreflowPushAlgorithm(const PreflowPushContext &ctx);
@@ -96,7 +98,7 @@ private:
 
 private:
   const PreflowPushContext _ctx;
-  PreflowPushAlgorithmStatistics _stats;
+  Statistics _stats;
 
   const CSRGraph *_graph;
   std::span<const EdgeID> _reverse_edges;

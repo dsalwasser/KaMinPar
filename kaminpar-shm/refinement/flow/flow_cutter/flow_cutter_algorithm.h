@@ -40,11 +40,11 @@ public:
           improved_balance(improved_balance),
           moves(moves) {};
 
-    [[nodiscard]] static Result Empty() {
+    [[nodiscard]] static Result empty() {
       return Result(0, false, {});
     }
 
-    [[nodiscard]] static Result TimeLimitExceeded() {
+    [[nodiscard]] static Result time_limit() {
       return Result(true);
     }
   };
@@ -54,8 +54,9 @@ public:
 
   virtual ~FlowCutterAlgorithm() = default;
 
-  [[nodiscard]] virtual Result
-  compute_cut(const BorderRegion &border_region, const FlowNetwork &flow_network) = 0;
+  [[nodiscard]] virtual Result compute_cut(
+      const BorderRegion &border_region, const FlowNetwork &flow_network, bool run_sequentially
+  ) = 0;
 
   virtual void free() = 0;
 

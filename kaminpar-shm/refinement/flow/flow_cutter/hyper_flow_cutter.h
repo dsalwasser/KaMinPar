@@ -41,20 +41,23 @@ public:
   HyperFlowCutter(
       const PartitionContext &p_ctx,
       const FlowCutterContext &fc_ctx,
-      bool run_sequentially,
       const PartitionedCSRGraph &p_graph,
       GainCache &gain_cache
   );
 
-  [[nodiscard]] virtual Result
-  compute_cut(const BorderRegion &border_region, const FlowNetwork &flow_network) override;
+  [[nodiscard]] virtual Result compute_cut(
+      const BorderRegion &border_region, const FlowNetwork &flow_network, bool run_sequentially
+  ) override;
 
   void free() override;
 
 private:
-  void construct_hypergraph(const FlowNetwork &flow_network);
+  void initialize(const FlowNetwork &flow_network);
 
-  Result run_hyper_flow_cutter(const BorderRegion &border_region, const FlowNetwork &flow_network);
+  template <typename FlowCutter>
+  void run_flow_cutter(
+      FlowCutter &flow_cutter, const BorderRegion &border_region, const FlowNetwork &flow_network
+  );
 
   void compute_distances(
       const BorderRegion &border_region,
@@ -82,7 +85,6 @@ private:
 private:
   const PartitionContext &_p_ctx;
   const FlowCutterContext &_fc_ctx;
-  const bool _run_sequentially;
 
   whfc::FlowHypergraphBuilder _hypergraph;
   whfc::HyperFlowCutter<whfc::SequentialPushRelabel> _sequential_flow_cutter;

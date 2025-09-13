@@ -261,8 +261,11 @@ struct KwayFMRefinementContext {
 struct FlowSchedulerContext {
   bool parallel;
   bool deterministic;
-  bool ignore_move_conflicts;
   double parallel_search_multiplier;
+
+  bool skip_unpromising_cuts;
+  bool skip_small_cuts;
+  EdgeWeight small_cut_threshold;
 };
 
 struct FlowNetworkConstructionContext {
@@ -275,6 +278,9 @@ struct FlowNetworkConstructionContext {
 struct PreflowPushContext {
   bool global_relabeling_heuristic;
   double global_relabeling_frequency;
+
+  bool parallel_blocking_resolution;
+  NodeID sequential_discharge_threshold;
 };
 
 struct PiercingHeuristicContext {
@@ -303,6 +309,7 @@ struct FlowCutterContext {
   bool use_whfc;
   bool abort_on_first_cut;
 
+  NodeID small_flow_network_threshold;
   PreflowPushContext flow;
   PiercingHeuristicContext piercing;
   FlowRebalancerContext rebalancer;

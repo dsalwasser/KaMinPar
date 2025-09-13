@@ -19,9 +19,10 @@ namespace kaminpar::shm {
 ParallelActiveBlockScheduler::ParallelActiveBlockScheduler(const TwowayFlowRefinementContext &f_ctx)
     : _f_ctx(f_ctx) {
   if (_f_ctx.scheduler.deterministic) {
-    _active_block_scheduling = std::make_unique<MatchingBasedActiveBlockScheduling>();
+    _active_block_scheduling =
+        std::make_unique<MatchingBasedActiveBlockScheduling>(f_ctx.scheduler);
   } else {
-    _active_block_scheduling = std::make_unique<SingleRoundActiveBlockScheduling>();
+    _active_block_scheduling = std::make_unique<SingleRoundActiveBlockScheduling>(f_ctx.scheduler);
   }
 }
 
@@ -58,13 +59,11 @@ bool ParallelActiveBlockScheduler::refine(
     _gain_cache.initialize(graph, p_graph);
   }
 
-  const bool run_sequentially = _f_ctx.run_sequentially || num_threads == num_parallel_searches;
   LazyVector<FlowRefiner> refiners(
       [&] {
-        return FlowRefiner(
-            p_ctx, _f_ctx, run_sequentially, quotient_graph, p_graph, graph, _gain_cache, start_time
-        );
+        return FlowRefiner(p_ctx, _f_ctx, quotient_graph, p_graph, graph, _gain_cache, start_time);
       },
+
       num_parallel_searches
   );
   LazyVector<ScalableVector<QuotientGraph::GraphEdge>> new_cut_edges_ets(num_parallel_searches);
@@ -80,7 +79,7 @@ bool ParallelActiveBlockScheduler::refine(
     DBG << "Starting round " << num_round;
 
     const Scheduling scheduling =
-        _active_block_scheduling->compute_scheduling(quotient_graph, _active_blocks);
+        _active_block_scheduling->compute_scheduling(quotient_graph, _active_blocks, num_round);
     std::fill_n(_active_blocks.begin(), p_graph.k(), false);
 
     EdgeWeight cut_value = prev_cut_value;
@@ -91,6 +90,7 @@ bool ParallelActiveBlockScheduler::refine(
       const std::size_t num_searches = std::min(num_parallel_searches, active_block_pairs.size());
       std::size_t cur_block_pair = 0;
 
+      const bool run_sequentially = _f_ctx.run_sequentially || num_threads == num_searches;
       tbb::parallel_for<std::size_t>(0, num_searches, [&](const std::size_t refiner_id) {
         FlowRefiner &refiner = refiners[refiner_id];
         ScalableVector<QuotientGraph::GraphEdge> &new_cut_edges = new_cut_edges_ets[refiner_id];
@@ -104,7 +104,7 @@ bool ParallelActiveBlockScheduler::refine(
           const auto [block1, block2] = active_block_pairs[block_pair];
           DBG << "Scheduling block pair " << block1 << " and " << block2;
 
-          const FlowRefiner::Result flow_result = refiner.refine(block1, block2);
+          const FlowRefiner::Result flow_result = refiner.refine(block1, block2, run_sequentially);
 
           if (flow_result.time_limit_exceeded) {
             if (tbb::task::current_context()->cancel_group_execution()) {
@@ -323,7 +323,6 @@ std::pair<bool, double>
 ParallelActiveBlockScheduler::is_feasible_move_sequence(std::span<Move> moves) {
   std::fill_n(_block_weight_delta.begin(), _p_graph->k(), 0);
 
-  const bool ignore_move_conflicts = _f_ctx.scheduler.ignore_move_conflicts;
   for (Move &move : moves) {
     KASSERT(
         move.old_block != move.new_block,
@@ -332,28 +331,17 @@ ParallelActiveBlockScheduler::is_feasible_move_sequence(std::span<Move> moves) {
     );
 
     const NodeID u = move.node;
+    const BlockID old_block = move.old_block;
     const BlockID new_block = move.new_block;
 
-    const BlockID u_block = _p_graph->block(u);
-    BlockID old_block = move.old_block;
+    // Remove all nodes from the move sequence that are not in their expected block.
+    // Use the old block variable to mark the move as such, which is used during reverting.
+    const bool move_conflict = _p_graph->block(u) != old_block;
+    if (move_conflict) {
+      IF_STATS _stats.num_move_conflicts += 1;
 
-    if (ignore_move_conflicts) {
-      old_block = u_block;
-
-      if (old_block == new_block) {
-        move.old_block = kInvalidBlockID;
-        continue;
-      }
-    } else {
-      // Remove all nodes from the move sequence that are not in their expected block.
-      // Use the old block variable to mark the move as such, which is used during reverting.
-      const bool move_conflict = u_block != old_block;
-      if (move_conflict) {
-        IF_STATS _stats.num_move_conflicts += 1;
-
-        move.old_block = kInvalidBlockID;
-        continue;
-      }
+      move.old_block = kInvalidBlockID;
+      continue;
     }
 
     const NodeWeight u_weight = _graph->node_weight(u);
@@ -380,9 +368,9 @@ ParallelActiveBlockScheduler::is_feasible_move_sequence(std::span<Move> moves) {
 EdgeWeight ParallelActiveBlockScheduler::atomic_apply_moves(
     const std::span<const Move> moves, QuotientCutEdges &new_cut_edges
 ) {
-  EdgeWeight gain = 0;
-
   new_cut_edges.clear();
+
+  EdgeWeight gain = 0;
   for (const Move &move : moves) {
     const BlockID old_block = move.old_block;
 

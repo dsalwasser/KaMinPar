@@ -215,8 +215,10 @@ Context create_default_context() {
                                           {
                                               .parallel = false,
                                               .deterministic = false,
-                                              .ignore_move_conflicts = false,
                                               .parallel_search_multiplier = 1,
+                                              .skip_unpromising_cuts = false,
+                                              .skip_small_cuts = false,
+                                              .small_cut_threshold = 10,
                                           },
                                       .construction =
                                           {
@@ -228,10 +230,13 @@ Context create_default_context() {
                                           {
                                               .use_whfc = false,
                                               .abort_on_first_cut = false,
+                                              .small_flow_network_threshold = 65536,
                                               .flow =
                                                   {
                                                       .global_relabeling_heuristic = true,
                                                       .global_relabeling_frequency = 1,
+                                                      .parallel_blocking_resolution = false,
+                                                      .sequential_discharge_threshold = 1024,
                                                   },
                                               .piercing =
                                                   {
@@ -288,8 +293,10 @@ Context create_default_context() {
                                   {
                                       .parallel = false,
                                       .deterministic = false,
-                                      .ignore_move_conflicts = false,
                                       .parallel_search_multiplier = 1,
+                                      .skip_unpromising_cuts = false,
+                                      .skip_small_cuts = false,
+                                      .small_cut_threshold = 10,
                                   },
                               .construction =
                                   {
@@ -301,10 +308,13 @@ Context create_default_context() {
                                   {
                                       .use_whfc = false,
                                       .abort_on_first_cut = false,
+                                      .small_flow_network_threshold = 65536,
                                       .flow =
                                           {
                                               .global_relabeling_heuristic = true,
                                               .global_relabeling_frequency = 1,
+                                              .parallel_blocking_resolution = false,
+                                              .sequential_discharge_threshold = 1024,
                                           },
                                       .piercing =
                                           {
@@ -378,8 +388,10 @@ Context create_default_context() {
                           {
                               .parallel = true,
                               .deterministic = false,
-                              .ignore_move_conflicts = false,
                               .parallel_search_multiplier = 1,
+                              .skip_unpromising_cuts = false,
+                              .skip_small_cuts = false,
+                              .small_cut_threshold = 10,
                           },
                       .construction =
                           {
@@ -391,10 +403,13 @@ Context create_default_context() {
                           {
                               .use_whfc = false,
                               .abort_on_first_cut = false,
+                              .small_flow_network_threshold = 65536,
                               .flow =
                                   {
                                       .global_relabeling_heuristic = true,
                                       .global_relabeling_frequency = 1,
+                                      .parallel_blocking_resolution = false,
+                                      .sequential_discharge_threshold = 1024,
                                   },
                               .piercing =
                                   {
