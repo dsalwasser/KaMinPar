@@ -12,6 +12,8 @@
 #include <string>
 #include <unordered_map>
 
+#include "kaminpar.h"
+
 // Parts of this header are part of the public interace:
 #include "kaminpar-shm/kaminpar.h"
 
@@ -73,6 +75,10 @@ std::unordered_map<std::string, RefinementAlgorithm> get_refinement_algorithms()
 std::ostream &operator<<(std::ostream &out, GainCacheStrategy strategy);
 
 std::unordered_map<std::string, GainCacheStrategy> get_gain_cache_strategies();
+
+std::ostream &operator<<(std::ostream &out, FlowRebalancerKind kind);
+
+std::unordered_map<std::string, FlowRebalancerKind> get_flow_rebalancer_kinds();
 
 std::ostream &operator<<(std::ostream &out, InitialRefinementAlgorithm algorithm);
 

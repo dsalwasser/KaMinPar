@@ -2,7 +2,7 @@
 
 #include <span>
 
-#include "kaminpar-shm/datastructures/partitioned_graph.h"
+#include "kaminpar-shm/datastructures/delta_partitioned_graph.h"
 #include "kaminpar-shm/kaminpar.h"
 #include "kaminpar-shm/refinement/flow/flow_network/border_region.h"
 #include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
@@ -13,7 +13,8 @@
 
 namespace kaminpar::shm {
 
-template <typename GainCache> class StaticFlowRebalancer : public FlowRebalancerBase<GainCache> {
+template <typename GainCache>
+class RoundStaticFlowRebalancer : public FlowRebalancerBase<GainCache> {
   using Base = FlowRebalancerBase<GainCache>;
 
   using Base::_d_graph;
@@ -26,7 +27,7 @@ public:
   using Result = Base::Result;
   using DeltaGainCache = Base::DeltaGainCache;
 
-  StaticFlowRebalancer(
+  RoundStaticFlowRebalancer(
       const PartitionedCSRGraph &p_graph,
       const GainCache &gain_cache,
       const std::span<const BlockWeight> max_block_weights
@@ -43,9 +44,6 @@ public:
 
     _block1 = border_region.block1();
     _block2 = border_region.block2();
-
-    _initialized_source_side_moves = false;
-    _initialized_sink_side_moves = false;
 
     _d_graph.clear();
     _gain_cache.clear();
@@ -85,56 +83,40 @@ public:
 
     _source_side_moves = _d_graph.block_weight(_block1) > _max_block_weights[_block1];
     const BlockID overloaded_block = _source_side_moves ? _block1 : _block2;
+    const std::span<const Move> move_order =
+        (overloaded_block == _block1) ? _precomputed_block1_moves : _precomputed_block2_moves;
+    const BlockWeight max_block_weight = _max_block_weights[overloaded_block];
 
-    if (_source_side_moves) {
-      if (!_initialized_source_side_moves) {
-        _initialized_source_side_moves = true;
-        compute_move_order(_block1, _precomputed_source_side_moves);
-      }
-    } else {
-      if (!_initialized_sink_side_moves) {
-        _initialized_sink_side_moves = true;
-        compute_move_order(_block2, _precomputed_sink_side_moves);
+    NodeID cur_move = 0;
+    EdgeWeight gain = 0;
+    while (_d_graph.block_weight(overloaded_block) > max_block_weight) {
+      while (true) {
+        if (cur_move == move_order.size()) {
+          return Result::failure();
+        }
+
+        const auto [u, target_block] = move_order[cur_move++];
+        const BlockID u_block = _d_graph.block(u);
+
+        if (u_block != overloaded_block) {
+          continue;
+        }
+
+        if (_d_graph.block_weight(target_block) + _graph.node_weight(u) >
+            _max_block_weights[target_block]) {
+          continue;
+        }
+
+        gain += _gain_cache.gain(u, u_block, target_block);
+        _gain_cache.move(u, u_block, target_block);
+
+        _d_graph.set_block(u, target_block);
+        _moves.emplace_back(u, target_block);
+        break;
       }
     }
 
-    const std::span<const Move> move_order =
-        _source_side_moves ? _precomputed_source_side_moves : _precomputed_sink_side_moves;
-    const BlockWeight max_block_weight = _max_block_weights[overloaded_block];
-
-    return TIMED_SCOPE("Extract Nodes") {
-      NodeID cur_move = 0;
-      EdgeWeight gain = 0;
-
-      while (_d_graph.block_weight(overloaded_block) > max_block_weight) {
-        while (true) {
-          if (cur_move == move_order.size()) {
-            return Result::failure();
-          }
-
-          const auto [u, target_block] = move_order[cur_move++];
-          const BlockID u_block = _d_graph.block(u);
-
-          if (u_block != overloaded_block) {
-            continue;
-          }
-
-          if (_d_graph.block_weight(target_block) + _graph.node_weight(u) >
-              _max_block_weights[target_block]) {
-            continue;
-          }
-
-          gain += _gain_cache.gain(u, u_block, target_block);
-          _gain_cache.move(u, u_block, target_block);
-
-          _d_graph.set_block(u, target_block);
-          _moves.emplace_back(u, target_block);
-          break;
-        }
-      }
-
-      return Result::success(overloaded_block, gain, _moves);
-    };
+    return Result::success(overloaded_block, gain, _moves);
   }
 
   void revert_moves() override {
@@ -151,64 +133,38 @@ public:
     _moves.clear();
   }
 
-private:
-  void compute_move_order(const BlockID overloaded_block, ScalableVector<Move> &moves) {
+  void set_moves(const FlowRebalancerMoves moves) {
+    _precomputed_block1_moves = moves.source_side_moves;
+    _precomputed_block2_moves = moves.sink_side_moves;
+  }
+
+  [[nodiscard]] ScalableVector<Move>
+  compute_moves(const BlockID block, const std::span<const NodeID> nodes) {
     SCOPED_TIMER("Compute Move Order");
 
-    TIMED_SCOPE("Update State") {
-      _virtual_moves.clear();
-
-      for (const auto &[u, _] : _flow_network->global_to_local_mapping.entries()) {
-        const BlockID u_block = _d_graph.block(u);
-        if (u_block == overloaded_block) {
-          continue;
-        }
-
-        _d_graph.set_block(u, overloaded_block);
-        _gain_cache.move(u, u_block, overloaded_block);
-
-        _virtual_moves.emplace_back(u, u_block);
-      }
-    };
+    _d_graph.clear();
+    _gain_cache.clear();
 
     TIMED_SCOPE("Insert Nodes") {
       Base::clear_nodes();
 
-      for (const NodeID u : _graph.nodes()) {
-        if (_d_graph.block(u) == overloaded_block) {
-          Base::insert_node(u);
-        }
+      for (const NodeID u : nodes) {
+        KASSERT(_d_graph.block(u) == block);
+        Base::insert_node(u);
       }
     };
 
-    TIMED_SCOPE("Extract Nodes") {
-      moves.clear();
+    ScalableVector<Move> moves;
 
+    TIMED_SCOPE("Extract Nodes") {
       while (Base::has_next_node()) {
         const auto [u, target_block] = Base::next_node();
-
-        if (_d_graph.block_weight(target_block) + _graph.node_weight(u) >
-            _max_block_weights[target_block]) {
-          Base::insert_node(u);
-          continue;
-        }
-
-        Base::move_node(u, overloaded_block, target_block);
+        Base::move_node(u, block, target_block);
         moves.emplace_back(u, target_block);
       }
     };
 
-    TIMED_SCOPE("Revert Moves") {
-      for (const auto &[u, target_block] : moves) {
-        _d_graph.set_block(u, overloaded_block);
-        _gain_cache.move(u, target_block, overloaded_block);
-      }
-
-      for (const auto &[u, u_block] : _virtual_moves) {
-        _d_graph.set_block(u, u_block);
-        _gain_cache.move(u, overloaded_block, u_block);
-      }
-    };
+    return moves;
   }
 
   [[nodiscard]] const DeltaPartitionedCSRGraph &d_graph() const override {
@@ -222,12 +178,8 @@ private:
   BlockID _block1;
   BlockID _block2;
 
-  bool _initialized_source_side_moves;
-  bool _initialized_sink_side_moves;
-  ScalableVector<Move> _virtual_moves;
-
-  ScalableVector<Move> _precomputed_source_side_moves;
-  ScalableVector<Move> _precomputed_sink_side_moves;
+  std::span<const Move> _precomputed_block1_moves;
+  std::span<const Move> _precomputed_block2_moves;
 
   bool _source_side_moves;
   ScalableVector<Move> _moves;

@@ -2,9 +2,13 @@
 
 #include <span>
 
+#include "kaminpar-shm/datastructures/csr_graph.h"
+#include "kaminpar-shm/datastructures/delta_partitioned_graph.h"
+#include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/kaminpar.h"
 #include "kaminpar-shm/refinement/flow/flow_network/border_region.h"
 #include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
+#include "kaminpar-shm/refinement/gains/delta_gain_caches.h"
 
 #include "kaminpar-common/datastructures/binary_heap.h"
 #include "kaminpar-common/datastructures/static_array.h"
@@ -20,39 +24,62 @@ public:
 
   struct Result {
     bool balanced;
+    BlockID overloaded_block;
 
     EdgeWeight gain;
     std::span<const Move> moves;
 
+    [[nodiscard]] static Result success(
+        const BlockID overloaded_block, const EdgeWeight gain, const std::span<const Move> moves
+    ) {
+      return Result(true, overloaded_block, gain, moves);
+    }
+
     [[nodiscard]] static Result failure() {
-      return Result(false, 0, {});
+      return Result(false, kInvalidBlockID, 0, {});
     }
   };
 
-  virtual void initialize(const BorderRegion &border_region, const FlowNetwork &flow_network) = 0;
+  virtual ~FlowRebalancer() = default;
 
-  [[nodiscard]] virtual Result rebalance(BlockID overloaded_block) = 0;
+  virtual void initialize(
+      bool source_side_cut, const BorderRegion &border_region, const FlowNetwork &flow_network
+  ) = 0;
+
+  virtual void update_nodes(std::span<const NodeID> nodes) = 0;
+
+  virtual Result rebalance() = 0;
 
   virtual void revert_moves() = 0;
+
+  virtual const DeltaPartitionedCSRGraph &d_graph() const = 0;
 };
 
-template <typename Graph, typename PartitionedGraph, typename GainCache>
-class FlowRebalancerBase : public FlowRebalancer {
+struct FlowRebalancerMoves {
+  using Move = FlowRebalancer::Move;
+
+  std::span<const Move> source_side_moves;
+  std::span<const Move> sink_side_moves;
+};
+
+template <typename GainCache> class FlowRebalancerBase : public FlowRebalancer {
   using RelativeGain = float;
   using PriorityQueue = BinaryMaxHeap<RelativeGain>;
 
 public:
+  using DeltaGainCache = GenericDeltaGainCache<GainCache>;
+
   FlowRebalancerBase(
-      PartitionedGraph &p_graph,
-      GainCache &gain_cache,
+      const PartitionedCSRGraph &p_graph,
+      const GainCache &gain_cache,
       std::span<const BlockWeight> max_block_weights
   )
-      : _max_block_weights(max_block_weights),
-        _graph(p_graph.graph()),
-        _p_graph(p_graph),
-        _gain_cache(gain_cache),
+      : _graph(p_graph.graph()),
+        _max_block_weights(max_block_weights),
+        _d_graph(&p_graph),
+        _gain_cache(gain_cache, _d_graph),
         _priority_queue(_graph.n()),
-        _target_blocks(_graph.n(), static_array::noinit) {};
+        _target_blocks(_graph.n(), static_array::noinit) {}
 
   [[nodiscard]] bool has_next_node() const {
     return !_priority_queue.empty();
@@ -80,7 +107,7 @@ public:
     const EdgeWeight gain = _gain_cache.gain(u, source_block, target_block);
     _gain_cache.move(u, source_block, target_block);
 
-    _p_graph.set_block(u, target_block);
+    _d_graph.set_block(u, target_block);
     _graph.adjacent_nodes(u, [&](const NodeID v) { update_node(v); });
 
     return gain;
@@ -107,19 +134,19 @@ private:
   }
 
   [[nodiscard]] std::pair<BlockID, RelativeGain> compute_best_move(const NodeID u) const {
-    const BlockID u_block = _p_graph.block(u);
+    const BlockID u_block = _d_graph.block(u);
     const NodeWeight u_weight = _graph.node_weight(u);
 
     BlockID target_block = kInvalidBlockID;
     BlockWeight target_block_weight = std::numeric_limits<BlockWeight>::max();
     EdgeWeight target_block_connection = std::numeric_limits<RelativeGain>::min();
 
-    for (BlockID block = 0, k = _p_graph.k(); block < k; ++block) {
+    for (BlockID block = 0, k = _d_graph.k(); block < k; ++block) {
       if (block == u_block) {
         continue;
       }
 
-      const BlockWeight block_weight = _p_graph.block_weight(block);
+      const BlockWeight block_weight = _d_graph.block_weight(block);
       if (block_weight + u_weight > _max_block_weights[block]) {
         continue;
       }
@@ -151,11 +178,11 @@ private:
   }
 
 protected:
+  const CSRGraph &_graph;
   std::span<const BlockWeight> _max_block_weights;
 
-  const Graph &_graph;
-  PartitionedGraph &_p_graph;
-  GainCache &_gain_cache;
+  DeltaPartitionedCSRGraph _d_graph;
+  DeltaGainCache _gain_cache;
 
 private:
   PriorityQueue _priority_queue;

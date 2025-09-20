@@ -294,11 +294,15 @@ struct PiercingHeuristicContext {
   NodeID bulk_piercing_round_threshold;
 };
 
+enum class FlowRebalancerKind {
+  DYNAMIC,
+  STATIC,
+  ROUND_STATIC,
+};
+
 struct FlowRebalancerContext {
   bool enabled;
-
-  bool dynamic_rebalancer;
-  bool rebalance_both_cuts;
+  FlowRebalancerKind kind;
 
   bool abort_on_candidate_cut;
   bool abort_on_improved_cut;

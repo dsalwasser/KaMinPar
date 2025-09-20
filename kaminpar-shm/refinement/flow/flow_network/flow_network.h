@@ -11,8 +11,8 @@
 namespace kaminpar::shm {
 
 struct FlowNetwork {
-  NodeID source;
-  NodeID sink;
+  static constexpr NodeID source = 0;
+  static constexpr NodeID sink = 1;
 
   CSRGraph graph;
   StaticArray<EdgeID> reverse_edges;

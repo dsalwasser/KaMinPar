@@ -800,15 +800,9 @@ CLI::Option_group *create_twoway_flow_refinement_options(CLI::App *app, Context 
       ->capture_default_str();
   twoway_flow
       ->add_option(
-          "--r-twoway-flow-dynamic-rebalancer",
-          ctx.refinement.twoway_flow.flow_cutter.rebalancer.dynamic_rebalancer
+          "--r-twoway-flow-rebalancer-kind", ctx.refinement.twoway_flow.flow_cutter.rebalancer.kind
       )
-      ->capture_default_str();
-  twoway_flow
-      ->add_option(
-          "--r-twoway-flow-rebalance-both-cuts",
-          ctx.refinement.twoway_flow.flow_cutter.rebalancer.rebalance_both_cuts
-      )
+      ->transform(CLI::CheckedTransformer(get_flow_rebalancer_kinds()).description(""))
       ->capture_default_str();
   twoway_flow
       ->add_option(

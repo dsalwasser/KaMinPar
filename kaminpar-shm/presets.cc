@@ -250,8 +250,7 @@ Context create_default_context() {
                                               .rebalancer =
                                                   {
                                                       .enabled = false,
-                                                      .dynamic_rebalancer = false,
-                                                      .rebalance_both_cuts = false,
+                                                      .kind = FlowRebalancerKind::DYNAMIC,
                                                       .abort_on_candidate_cut = true,
                                                       .abort_on_improved_cut = false,
                                                       .abort_on_stable_improved_cut = false,
@@ -328,8 +327,7 @@ Context create_default_context() {
                                       .rebalancer =
                                           {
                                               .enabled = false,
-                                              .dynamic_rebalancer = false,
-                                              .rebalance_both_cuts = false,
+                                              .kind = FlowRebalancerKind::DYNAMIC,
                                               .abort_on_candidate_cut = true,
                                               .abort_on_improved_cut = false,
                                               .abort_on_stable_improved_cut = false,
@@ -423,8 +421,7 @@ Context create_default_context() {
                               .rebalancer =
                                   {
                                       .enabled = false,
-                                      .dynamic_rebalancer = false,
-                                      .rebalance_both_cuts = false,
+                                      .kind = FlowRebalancerKind::DYNAMIC,
                                       .abort_on_candidate_cut = true,
                                       .abort_on_improved_cut = false,
                                       .abort_on_stable_improved_cut = false,

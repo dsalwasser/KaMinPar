@@ -14,7 +14,6 @@
 #include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 #include "kaminpar-shm/refinement/flow/util/breadth_first_search.h"
 #include "kaminpar-shm/refinement/flow/util/node_status.h"
-#include "kaminpar-shm/refinement/gains/delta_gain_caches.h"
 #include "kaminpar-shm/refinement/gains/sparse_gain_cache.h"
 
 #include "kaminpar-common/datastructures/marker.h"
@@ -30,8 +29,6 @@ class FlowCutter : public FlowCutterAlgorithm {
   static constexpr bool kSinkTag = false;
 
   using GainCache = NormalSparseGainCache<CSRGraph, PartitionedCSRGraph, DeltaPartitionedCSRGraph>;
-  using DeltaGainCache = GenericDeltaGainCache<GainCache>;
-
   using RebalanceResult = FlowRebalancer::Result;
 
 public:
@@ -39,17 +36,24 @@ public:
       const PartitionContext &p_ctx,
       const FlowCutterContext &fc_ctx,
       const PartitionedCSRGraph &p_graph,
-      GainCache &gain_cache
+      const GainCache &gain_cache
   );
 
   [[nodiscard]] Result compute_cut(
-      const BorderRegion &border_region, const FlowNetwork &flow_network, bool run_sequentially
+      const BorderRegion &border_region,
+      const FlowNetwork &flow_network,
+      FlowRebalancerMoves rebalancer_moves,
+      bool run_sequentially
   ) override;
 
   void free() override;
 
 private:
-  void initialize(const BorderRegion &border_region, const FlowNetwork &flow_network);
+  void initialize(
+      const BorderRegion &border_region,
+      const FlowNetwork &flow_network,
+      FlowRebalancerMoves rebalancer_moves
+  );
 
   void run_flow_cutter(const BorderRegion &border_region, const FlowNetwork &flow_network);
 
@@ -66,10 +70,10 @@ private:
 
   void rebalance(
       bool source_side_cut,
-      bool rebalance_source_side,
       EdgeWeight cur_cut_value,
       const BorderRegion &border_region,
-      const FlowNetwork &flow_network
+      const FlowNetwork &flow_network,
+      FlowRebalancer *flow_rebalancer
   );
 
   [[nodiscard]] MaxPreflowAlgorithm *max_preflow_algorithm();
@@ -99,9 +103,8 @@ private:
   Marker<> _source_side_piercing_node_candidates_marker;
   Marker<> _sink_side_piercing_node_candidates_marker;
 
-  DeltaPartitionedCSRGraph _delta_p_graph;
-  DeltaGainCache _delta_gain_cache;
-  std::unique_ptr<FlowRebalancer> _flow_rebalancer;
+  std::unique_ptr<FlowRebalancer> _source_side_rebalancer;
+  std::unique_ptr<FlowRebalancer> _sink_side_rebalancer;
 
   EdgeWeight _gain;
   bool _improve_balance;

@@ -8,6 +8,7 @@
 #include "kaminpar-shm/kaminpar.h"
 #include "kaminpar-shm/refinement/flow/flow_cutter/flow_cutter_algorithm.h"
 #include "kaminpar-shm/refinement/flow/flow_network/quotient_graph.h"
+#include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 #include "kaminpar-shm/refinement/gains/sparse_gain_cache.h"
 
 namespace kaminpar::shm {
@@ -29,7 +30,7 @@ public:
       const QuotientGraph &q_graph,
       const PartitionedCSRGraph &p_graph,
       const CSRGraph &graph,
-      GainCache &gain_cache,
+      const GainCache &gain_cache,
       const TimePoint &start_time
   );
 
@@ -39,7 +40,9 @@ public:
   FlowRefiner(const FlowRefiner &) = delete;
   FlowRefiner &operator=(const FlowRefiner &) = delete;
 
-  [[nodiscard]] Result refine(BlockID block1, BlockID block2, bool run_sequentially);
+  [[nodiscard]] Result refine(
+      BlockID block1, BlockID block2, FlowRebalancerMoves rebalancer_moves, bool run_sequentially
+  );
 
   void free();
 

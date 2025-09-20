@@ -283,8 +283,6 @@ FlowNetwork FlowNetworkConstructor::sequential_construct_flow_network(
   );
 
   return FlowNetwork(
-      kSource,
-      kSink,
       std::move(flow_network_graph),
       std::move(reverse_edges),
       std::move(global_to_local_mapping),
@@ -585,8 +583,6 @@ private:
   );
 
   return FlowNetwork(
-      kSource,
-      kSink,
       std::move(flow_network_graph),
       std::move(reverse_edges),
       std::move(global_to_local_mapping),

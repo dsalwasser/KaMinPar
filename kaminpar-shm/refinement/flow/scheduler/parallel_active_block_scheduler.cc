@@ -7,6 +7,7 @@
 #include <tbb/task_arena.h>
 
 #include "kaminpar-shm/metrics.h"
+#include "kaminpar-shm/refinement/flow/rebalancer/round_static_flow_rebalancer.h"
 #include "kaminpar-shm/refinement/flow/scheduler/scheduling/matching_based_active_block_scheduler.h"
 #include "kaminpar-shm/refinement/flow/scheduler/scheduling/single_round_active_block_scheduler.h"
 #include "kaminpar-shm/refinement/flow/util/lazy_vector.h"
@@ -56,6 +57,10 @@ bool ParallelActiveBlockScheduler::refine(
   QuotientGraph quotient_graph(p_graph);
 
   if (_f_ctx.flow_cutter.rebalancer.enabled) {
+    if (_f_ctx.flow_cutter.use_whfc) {
+      LOG_WARNING << "Cannot use the flow rebalancer together with WHFC; disabling rebalancing.";
+    }
+
     _gain_cache.initialize(graph, p_graph);
   }
 
@@ -63,7 +68,6 @@ bool ParallelActiveBlockScheduler::refine(
       [&] {
         return FlowRefiner(p_ctx, _f_ctx, quotient_graph, p_graph, graph, _gain_cache, start_time);
       },
-
       num_parallel_searches
   );
   LazyVector<ScalableVector<QuotientGraph::GraphEdge>> new_cut_edges_ets(num_parallel_searches);
@@ -77,6 +81,10 @@ bool ParallelActiveBlockScheduler::refine(
   while (prev_cut_value > 0) {
     num_round += 1;
     DBG << "Starting round " << num_round;
+
+    if (_f_ctx.flow_cutter.rebalancer.enabled) {
+      initialize_rebalancers(p_graph, graph, p_ctx);
+    }
 
     const Scheduling scheduling =
         _active_block_scheduling->compute_scheduling(quotient_graph, _active_blocks, num_round);
@@ -104,7 +112,9 @@ bool ParallelActiveBlockScheduler::refine(
           const auto [block1, block2] = active_block_pairs[block_pair];
           DBG << "Scheduling block pair " << block1 << " and " << block2;
 
-          const FlowRefiner::Result flow_result = refiner.refine(block1, block2, run_sequentially);
+          const FlowRefiner::Result flow_result = refiner.refine(
+              block1, block2, flow_rebalancer_moves(block1, block2), run_sequentially
+          );
 
           if (flow_result.time_limit_exceeded) {
             if (tbb::task::current_context()->cancel_group_execution()) {
@@ -218,6 +228,45 @@ bool ParallelActiveBlockScheduler::refine(
   IF_STATS _stats.print();
 
   return found_improvement;
+}
+
+void ParallelActiveBlockScheduler::initialize_rebalancers(
+    const PartitionedCSRGraph &p_graph, const CSRGraph &graph, const PartitionContext &p_ctx
+) {
+  if (_f_ctx.flow_cutter.rebalancer.kind != FlowRebalancerKind::ROUND_STATIC) {
+    return;
+  }
+
+  if (_nodes_per_block.size() < p_graph.k()) {
+    _nodes_per_block.resize(p_graph.k());
+  }
+  for (auto &nodes : _nodes_per_block) {
+    nodes.clear();
+  }
+
+  if (_moves_per_block.size() < p_graph.k()) {
+    _moves_per_block.resize(p_graph.k());
+  }
+
+  for (const NodeID u : graph.nodes()) {
+    const BlockID u_block = p_graph.block(u);
+    _nodes_per_block[u_block].push_back(u);
+  }
+
+  RoundStaticFlowRebalancer<GainCache> flow_rebalancer(
+      p_graph, _gain_cache, p_ctx.max_block_weights()
+  );
+  for (BlockID block = 0; block < p_graph.k(); ++block) {
+    _moves_per_block[block] = flow_rebalancer.compute_moves(block, _nodes_per_block[block]);
+  }
+}
+
+FlowRebalancerMoves
+ParallelActiveBlockScheduler::flow_rebalancer_moves(const BlockID block1, const BlockID block2) {
+  return (_f_ctx.flow_cutter.rebalancer.enabled &&
+          _f_ctx.flow_cutter.rebalancer.kind == FlowRebalancerKind::ROUND_STATIC)
+             ? FlowRebalancerMoves(_moves_per_block[block1], _moves_per_block[block2])
+             : FlowRebalancerMoves();
 }
 
 void ParallelActiveBlockScheduler::commit_moves(

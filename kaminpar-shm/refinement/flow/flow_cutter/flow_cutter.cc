@@ -7,6 +7,7 @@
 #include "kaminpar-shm/refinement/flow/max_flow/parallel_preflow_push_algorithm.h"
 #include "kaminpar-shm/refinement/flow/max_flow/preflow_push_algorithm.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/dynamic_flow_rebalancer.h"
+#include "kaminpar-shm/refinement/flow/rebalancer/round_static_flow_rebalancer.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/static_flow_rebalancer.h"
 
 #include "kaminpar-common/assert.h"
@@ -18,14 +19,12 @@ FlowCutter::FlowCutter(
     const PartitionContext &p_ctx,
     const FlowCutterContext &fc_ctx,
     const PartitionedCSRGraph &p_graph,
-    GainCache &gain_cache
+    const GainCache &gain_cache
 )
     : _p_ctx(p_ctx),
       _fc_ctx(fc_ctx),
       _sequential_max_flow_algorithm(std::make_unique<PreflowPushAlgorithm>(fc_ctx.flow)),
-      _piercing_heuristic(fc_ctx.piercing, p_ctx.k),
-      _delta_p_graph(&p_graph),
-      _delta_gain_cache(gain_cache, _delta_p_graph) {
+      _piercing_heuristic(fc_ctx.piercing, p_ctx.k) {
   if (_fc_ctx.flow.parallel_blocking_resolution) {
     _parallel_max_flow_algorithm =
         std::make_unique<ParallelBlockedPreflowPushAlgorithm>(fc_ctx.flow);
@@ -34,22 +33,40 @@ FlowCutter::FlowCutter(
   }
 
   if (_fc_ctx.rebalancer.enabled) {
-    if (_fc_ctx.rebalancer.dynamic_rebalancer) {
-      _flow_rebalancer = std::make_unique<
-          DynamicFlowRebalancer<CSRGraph, DeltaPartitionedCSRGraph, DeltaGainCache>>(
-          _delta_p_graph, _delta_gain_cache, p_ctx.max_block_weights()
+    switch (_fc_ctx.rebalancer.kind) {
+    case FlowRebalancerKind::DYNAMIC:
+      _source_side_rebalancer = std::make_unique<DynamicFlowRebalancer<GainCache>>(
+          p_graph, gain_cache, p_ctx.max_block_weights()
       );
-    } else {
-      _flow_rebalancer = std::make_unique<
-          StaticFlowRebalancer<CSRGraph, DeltaPartitionedCSRGraph, DeltaGainCache>>(
-          _delta_p_graph, _delta_gain_cache, p_ctx.max_block_weights()
+      _sink_side_rebalancer = std::make_unique<DynamicFlowRebalancer<GainCache>>(
+          p_graph, gain_cache, p_ctx.max_block_weights()
       );
+      break;
+    case FlowRebalancerKind::STATIC:
+      _source_side_rebalancer = std::make_unique<StaticFlowRebalancer<GainCache>>(
+          p_graph, gain_cache, p_ctx.max_block_weights()
+      );
+      _sink_side_rebalancer = std::make_unique<StaticFlowRebalancer<GainCache>>(
+          p_graph, gain_cache, p_ctx.max_block_weights()
+      );
+      break;
+    case FlowRebalancerKind::ROUND_STATIC:
+      _source_side_rebalancer = std::make_unique<RoundStaticFlowRebalancer<GainCache>>(
+          p_graph, gain_cache, p_ctx.max_block_weights()
+      );
+      _sink_side_rebalancer = std::make_unique<RoundStaticFlowRebalancer<GainCache>>(
+          p_graph, gain_cache, p_ctx.max_block_weights()
+      );
+      break;
     }
   }
 };
 
 FlowCutter::Result FlowCutter::compute_cut(
-    const BorderRegion &border_region, const FlowNetwork &flow_network, const bool run_sequentially
+    const BorderRegion &border_region,
+    const FlowNetwork &flow_network,
+    const FlowRebalancerMoves rebalancer_moves,
+    const bool run_sequentially
 ) {
   SCOPED_TIMER("Run FlowCutter");
 
@@ -59,7 +76,7 @@ FlowCutter::Result FlowCutter::compute_cut(
   _run_sequentially = run_sequentially || (flow_network.graph.n() + flow_network.graph.m()) <
                                               _fc_ctx.small_flow_network_threshold;
 
-  initialize(border_region, flow_network);
+  initialize(border_region, flow_network, rebalancer_moves);
   run_flow_cutter(border_region, flow_network);
 
   if (time_limit_exceeded()) {
@@ -69,7 +86,11 @@ FlowCutter::Result FlowCutter::compute_cut(
   return Result(_gain, _improve_balance, _moves);
 }
 
-void FlowCutter::initialize(const BorderRegion &border_region, const FlowNetwork &flow_network) {
+void FlowCutter::initialize(
+    const BorderRegion &border_region,
+    const FlowNetwork &flow_network,
+    const FlowRebalancerMoves rebalancer_moves
+) {
   _source_side_border_nodes.clear();
   _source_side_border_nodes.push_back(flow_network.source);
 
@@ -102,9 +123,15 @@ void FlowCutter::initialize(const BorderRegion &border_region, const FlowNetwork
   };
 
   if (_fc_ctx.rebalancer.enabled) {
-    _delta_p_graph.clear();
-    _delta_gain_cache.clear();
-    _flow_rebalancer->initialize(border_region, flow_network);
+    _source_side_rebalancer->initialize(kSourceTag, border_region, flow_network);
+    _sink_side_rebalancer->initialize(kSinkTag, border_region, flow_network);
+
+    if (_fc_ctx.rebalancer.kind == FlowRebalancerKind::ROUND_STATIC) {
+      dynamic_cast<RoundStaticFlowRebalancer<GainCache> *>(_source_side_rebalancer.get())
+          ->set_moves(rebalancer_moves);
+      dynamic_cast<RoundStaticFlowRebalancer<GainCache> *>(_sink_side_rebalancer.get())
+          ->set_moves(rebalancer_moves);
+    }
   }
 
   _gain = 0;
@@ -239,71 +266,40 @@ void FlowCutter::run_flow_cutter(
       break;
     }
 
-    if (_fc_ctx.rebalancer.enabled && augmenting_path_available_from_piercing) {
-      const bool rebalance_source_side_for_source_side_cut =
-          source_side_weight >= (total_weight - source_side_weight);
+    const bool pierce_on_source_side = source_side_weight <= sink_side_weight;
 
-      const bool rebalance_source_side_for_sink_side_cut =
-          (total_weight - sink_side_weight) >= sink_side_weight;
+    if (_fc_ctx.rebalancer.enabled) {
+      FlowRebalancer *rebalancer =
+          pierce_on_source_side ? _source_side_rebalancer.get() : _sink_side_rebalancer.get();
+      rebalancer->update_nodes(
+          pierce_on_source_side ? _source_reachable_nodes : _sink_reachable_nodes
+      );
 
-      if (_fc_ctx.rebalancer.rebalance_both_cuts) {
-        rebalance(
-            kSourceTag,
-            rebalance_source_side_for_source_side_cut,
-            cut_value,
-            border_region,
-            flow_network
-        );
+      if (augmenting_path_available_from_piercing) {
+        rebalance(pierce_on_source_side, cut_value, border_region, flow_network, rebalancer);
 
-        rebalance(
-            kSinkTag,
-            rebalance_source_side_for_sink_side_cut,
-            cut_value,
-            border_region,
-            flow_network
-        );
-      } else {
-        const EdgeWeight source_side_cut_overload =
-            rebalance_source_side_for_source_side_cut
-                ? (source_side_weight - max_source_side_weight)
-                : ((total_weight - source_side_weight) - max_sink_side_weight);
-
-        const EdgeWeight sink_side_cut_overload =
-            rebalance_source_side_for_sink_side_cut
-                ? ((total_weight - sink_side_weight) - max_source_side_weight)
-                : (sink_side_weight - max_sink_side_weight);
-
-        const bool rebalance_source_side_cut = source_side_cut_overload <= sink_side_cut_overload;
-        const bool rebalance_source_side = rebalance_source_side_cut
-                                               ? rebalance_source_side_for_source_side_cut
-                                               : rebalance_source_side_for_sink_side_cut;
-
-        rebalance(
-            rebalance_source_side_cut, rebalance_source_side, cut_value, border_region, flow_network
-        );
-      }
-
-      const EdgeWeight flow_cutter_gain = flow_network.cut_value - cut_value;
-      if (_fc_ctx.rebalancer.abort_on_candidate_cut && _gain > flow_cutter_gain) {
-        break;
-      }
-
-      if (_fc_ctx.rebalancer.abort_on_improved_cut && _gain > 0) {
-        break;
-      }
-
-      if (_fc_ctx.rebalancer.abort_on_stable_improved_cut) {
-        if (found_improved_cut) {
-          const double relative_rebalancing_improvement =
-              (prev_rebalancing_gain - _gain) / static_cast<double>(prev_rebalancing_gain);
-
-          if (relative_rebalancing_improvement < 0) {
-            break;
-          }
+        const EdgeWeight flow_cutter_gain = flow_network.cut_value - cut_value;
+        if (_fc_ctx.rebalancer.abort_on_candidate_cut && _gain > flow_cutter_gain) {
+          break;
         }
 
-        found_improved_cut |= _gain > 0;
-        prev_rebalancing_gain = _gain;
+        if (_fc_ctx.rebalancer.abort_on_improved_cut && _gain > 0) {
+          break;
+        }
+
+        if (_fc_ctx.rebalancer.abort_on_stable_improved_cut) {
+          if (found_improved_cut) {
+            const double relative_rebalancing_improvement =
+                (prev_rebalancing_gain - _gain) / static_cast<double>(prev_rebalancing_gain);
+
+            if (relative_rebalancing_improvement < 0) {
+              break;
+            }
+          }
+
+          found_improved_cut |= _gain > 0;
+          prev_rebalancing_gain = _gain;
+        }
       }
     }
 
@@ -311,7 +307,7 @@ void FlowCutter::run_flow_cutter(
       break;
     }
 
-    if (source_side_weight <= sink_side_weight) {
+    if (pierce_on_source_side) {
       DBG << "Piercing on source-side (" << source_side_weight << "/" << max_source_side_weight
           << ", " << (total_weight - source_side_weight) << "/" << max_sink_side_weight << ")";
 
@@ -358,6 +354,10 @@ void FlowCutter::run_flow_cutter(
           source_side_weight += flow_network.graph.node_weight(piercing_node);
         }
       };
+
+      if (_fc_ctx.rebalancer.enabled) {
+        _source_side_rebalancer->update_nodes(piercing_nodes);
+      }
 
       prev_source_side_weight = source_side_weight;
       pierced_on_source_side = true;
@@ -408,6 +408,10 @@ void FlowCutter::run_flow_cutter(
           sink_side_weight += flow_network.graph.node_weight(piercing_node);
         }
       };
+
+      if (_fc_ctx.rebalancer.enabled) {
+        _sink_side_rebalancer->update_nodes(piercing_nodes);
+      }
 
       prev_sink_side_weight = sink_side_weight;
       pierced_on_source_side = false;
@@ -588,43 +592,14 @@ void FlowCutter::compute_moves(
 
 void FlowCutter::rebalance(
     const bool source_side_cut,
-    const bool rebalance_source_side,
     const EdgeWeight cur_cut_value,
     const BorderRegion &border_region,
-    const FlowNetwork &flow_network
+    const FlowNetwork &flow_network,
+    FlowRebalancer *flow_rebalancer
 ) {
   SCOPED_TIMER("Rebalance");
 
-  const BlockID block1 = border_region.block1();
-  const BlockID block2 = border_region.block2();
-
-  TIMED_SCOPE("Update State") {
-    const NodeStatus &node_status = max_preflow_algorithm()->node_status();
-    const std::uint8_t side_status = source_side_cut ? NodeStatus::kSource : NodeStatus::kSink;
-
-    const BlockID side = source_side_cut ? block1 : block2;
-    const BlockID other_side = source_side_cut ? block2 : block1;
-
-    const Marker<> &node_reachability_marker =
-        source_side_cut ? _source_reachable_nodes_marker : _sink_reachable_nodes_marker;
-
-    for (const auto &[u, u_local] : flow_network.global_to_local_mapping.entries()) {
-      const BlockID old_block = _delta_p_graph.block(u);
-      const BlockID new_block =
-          (node_status.has_status(u_local, side_status) || node_reachability_marker.get(u_local))
-              ? side
-              : other_side;
-
-      if (old_block != new_block) {
-        _delta_p_graph.set_block(u, new_block);
-        _delta_gain_cache.move(u, old_block, new_block);
-      }
-    }
-  };
-
-  const BlockID overloaded_block = rebalance_source_side ? block1 : block2;
-  const RebalanceResult rebalancer_result = _flow_rebalancer->rebalance(overloaded_block);
-
+  const RebalanceResult rebalancer_result = flow_rebalancer->rebalance();
   if (!rebalancer_result.balanced) {
     DBG << "Rebalancer failed to produce a balanced cut";
   } else {
@@ -637,21 +612,28 @@ void FlowCutter::rebalance(
       SCOPED_TIMER("Compute Moves");
 
       _gain = total_gain;
+      _improve_balance = false;
       _moves.clear();
 
-      for (const NodeID u : border_region.nodes_region1()) {
-        const BlockID new_block = _delta_p_graph.block(u);
+      const BlockID block1 = border_region.block1();
+      const BlockID block2 = border_region.block2();
 
-        if (new_block != block1) {
-          _moves.emplace_back(u, block1, new_block);
+      const BlockID overloaded_block = rebalancer_result.overloaded_block;
+      const DeltaPartitionedCSRGraph &d_graph = flow_rebalancer->d_graph();
+
+      for (const NodeID u : border_region.nodes_region1()) {
+        const BlockID u_block = d_graph.block(u);
+
+        if (u_block != block1) {
+          _moves.emplace_back(u, block1, u_block);
         };
       }
 
       for (const NodeID u : border_region.nodes_region2()) {
-        const BlockID new_block = _delta_p_graph.block(u);
+        const BlockID u_block = d_graph.block(u);
 
-        if (new_block != block2) {
-          _moves.emplace_back(u, block2, new_block);
+        if (u_block != block2) {
+          _moves.emplace_back(u, block2, u_block);
         };
       }
 
@@ -665,7 +647,7 @@ void FlowCutter::rebalance(
     }
   }
 
-  _flow_rebalancer->revert_moves();
+  flow_rebalancer->revert_moves();
 }
 
 [[nodiscard]] MaxPreflowAlgorithm *FlowCutter::max_preflow_algorithm() {

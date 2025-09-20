@@ -2,7 +2,10 @@
 
 #include <span>
 
+#include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/kaminpar.h"
+#include "kaminpar-shm/refinement/flow/flow_network/border_region.h"
+#include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 
 #include "kaminpar-common/datastructures/scalable_vector.h"
@@ -10,98 +13,140 @@
 
 namespace kaminpar::shm {
 
-template <typename Graph, typename PartitionedGraph, typename GainCache>
-class DynamicFlowRebalancer : public FlowRebalancerBase<Graph, PartitionedGraph, GainCache> {
-  using Base = FlowRebalancerBase<Graph, PartitionedGraph, GainCache>;
+template <typename GainCache> class DynamicFlowRebalancer : public FlowRebalancerBase<GainCache> {
+  using Base = FlowRebalancerBase<GainCache>;
 
+  using Base::_d_graph;
   using Base::_gain_cache;
   using Base::_graph;
   using Base::_max_block_weights;
-  using Base::_p_graph;
 
 public:
   using Move = Base::Move;
   using Result = Base::Result;
+  using DeltaGainCache = Base::DeltaGainCache;
 
   DynamicFlowRebalancer(
-      PartitionedGraph &p_graph,
-      GainCache &gain_cache,
-      std::span<const BlockWeight> max_block_weights
+      const PartitionedCSRGraph &p_graph,
+      const GainCache &gain_cache,
+      const std::span<const BlockWeight> max_block_weights
   )
-      : Base(p_graph, gain_cache, max_block_weights),
-        _overloaded_block(kInvalidBlockID) {}
+      : Base(p_graph, gain_cache, max_block_weights) {}
 
   void initialize(
-      [[maybe_unused]] const BorderRegion &border_region,
-      [[maybe_unused]] const FlowNetwork &flow_network
-  ) override {}
+      const bool source_side_cut, const BorderRegion &border_region, const FlowNetwork &flow_network
+  ) override {
+    SCOPED_TIMER("Initialize Rebalancer");
 
-  [[nodiscard]] Result rebalance(const BlockID overloaded_block) override {
+    _source_side_cut = source_side_cut;
+    _flow_network = &flow_network;
+
+    _block1 = border_region.block1();
+    _block2 = border_region.block2();
+
+    _d_graph.clear();
+    _gain_cache.clear();
+
+    const BlockID target_block = source_side_cut ? border_region.block2() : border_region.block1();
+    for (const auto &[u, _] : flow_network.global_to_local_mapping.entries()) {
+      const BlockID u_block = _d_graph.block(u);
+
+      if (u_block != target_block) {
+        _d_graph.set_block(u, target_block);
+        _gain_cache.move(u, u_block, target_block);
+      }
+    }
+  }
+
+  void update_nodes(const std::span<const NodeID> nodes) override {
+    SCOPED_TIMER("Update Node State");
+
+    const BlockID target_block = _source_side_cut ? _block1 : _block2;
+    for (const NodeID u_local : nodes) {
+      if (u_local == FlowNetwork::source || u_local == FlowNetwork::sink) {
+        continue;
+      }
+
+      const NodeID u = _flow_network->local_to_global_mapping.get(u_local);
+      const BlockID u_block = _d_graph.block(u);
+
+      if (u_block != target_block) {
+        _d_graph.set_block(u, target_block);
+        _gain_cache.move(u, u_block, target_block);
+      }
+    }
+  }
+
+  [[nodiscard]] Result rebalance() override {
     KASSERT(_moves.empty());
-    _overloaded_block = overloaded_block;
 
-    insert_nodes();
-    return compute_moves();
+    _source_side_moves = _d_graph.block_weight(_block1) > _max_block_weights[_block1];
+    const BlockID overloaded_block = _source_side_moves ? _block1 : _block2;
+    const BlockWeight max_block_weight = _max_block_weights[overloaded_block];
+
+    TIMED_SCOPE("Insert Nodes") {
+      Base::clear_nodes();
+
+      for (const NodeID u : _graph.nodes()) {
+        if (_d_graph.block(u) == overloaded_block) {
+          Base::insert_node(u);
+        }
+      }
+    };
+
+    return TIMED_SCOPE("Extract Nodes") {
+      EdgeWeight gain = 0;
+
+      while (_d_graph.block_weight(overloaded_block) > max_block_weight) {
+        while (true) {
+          if (!Base::has_next_node()) {
+            return Result::failure();
+          }
+
+          const auto [u, target_block] = Base::next_node();
+          if (_d_graph.block_weight(target_block) + _graph.node_weight(u) >
+              _max_block_weights[target_block]) {
+            Base::insert_node(u);
+            continue;
+          }
+
+          gain += Base::move_node(u, overloaded_block, target_block);
+          _moves.emplace_back(u, target_block);
+
+          break;
+        }
+      }
+
+      return Result::success(overloaded_block, gain, _moves);
+    };
   }
 
   void revert_moves() override {
     SCOPED_TIMER("Revert Moves");
 
-    const BlockID overloaded_block = _overloaded_block;
+    const BlockID overloaded_block = _source_side_moves ? _block1 : _block2;
     for (const auto &[u, target_block] : _moves) {
-      _p_graph.set_block(u, overloaded_block);
+      KASSERT(_d_graph.block(u) == target_block);
+
+      _d_graph.set_block(u, overloaded_block);
       _gain_cache.move(u, target_block, overloaded_block);
     }
 
     _moves.clear();
   }
 
-private:
-  void insert_nodes() {
-    SCOPED_TIMER("Insert Nodes");
-
-    Base::clear_nodes();
-
-    const BlockID overloaded_block = _overloaded_block;
-    for (const NodeID u : _graph.nodes()) {
-      if (_p_graph.block(u) == overloaded_block) {
-        Base::insert_node(u);
-      }
-    }
-  }
-
-  Result compute_moves() {
-    SCOPED_TIMER("Compute Moves");
-
-    const BlockID overloaded_block = _overloaded_block;
-    const BlockWeight max_block_weight = _max_block_weights[overloaded_block];
-
-    EdgeWeight gain = 0;
-    while (_p_graph.block_weight(overloaded_block) > max_block_weight) {
-      while (true) {
-        if (!Base::has_next_node()) {
-          return Result::failure();
-        }
-
-        const auto [u, target_block] = Base::next_node();
-        if (_p_graph.block_weight(target_block) + _graph.node_weight(u) >
-            _max_block_weights[target_block]) {
-          Base::insert_node(u);
-          continue;
-        }
-
-        gain += Base::move_node(u, overloaded_block, target_block);
-        _moves.emplace_back(u, target_block);
-
-        break;
-      }
-    }
-
-    return Result(true, gain, _moves);
+  [[nodiscard]] const DeltaPartitionedCSRGraph &d_graph() const override {
+    return _d_graph;
   }
 
 private:
-  BlockID _overloaded_block;
+  bool _source_side_cut;
+  const FlowNetwork *_flow_network;
+
+  BlockID _block1;
+  BlockID _block2;
+
+  bool _source_side_moves;
   ScalableVector<Move> _moves;
 };
 

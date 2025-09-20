@@ -436,6 +436,27 @@ std::unordered_map<std::string, GainCacheStrategy> get_gain_cache_strategies() {
   };
 }
 
+std::ostream &operator<<(std::ostream &out, FlowRebalancerKind kind) {
+  switch (kind) {
+  case FlowRebalancerKind::DYNAMIC:
+    return out << "dynamic";
+  case FlowRebalancerKind::STATIC:
+    return out << "static";
+  case FlowRebalancerKind::ROUND_STATIC:
+    return out << "round-static";
+  }
+
+  return out << "<invalid>";
+}
+
+std::unordered_map<std::string, FlowRebalancerKind> get_flow_rebalancer_kinds() {
+  return {
+      {"dynamic", FlowRebalancerKind::DYNAMIC},
+      {"static", FlowRebalancerKind::STATIC},
+      {"round-static", FlowRebalancerKind::ROUND_STATIC},
+  };
+}
+
 std::ostream &operator<<(std::ostream &out, InitialRefinementAlgorithm algorithm) {
   switch (algorithm) {
   case InitialRefinementAlgorithm::NOOP:
@@ -805,11 +826,8 @@ std::ostream &operator<<(std::ostream &out, const RefinementContext &r_ctx) {
     out << "  Rebalancing:                " << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.enabled)
         << "\n";
     if (r_ctx.twoway_flow.flow_cutter.rebalancer.enabled) {
-      out << "    Rebalancer:               "
-          << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.dynamic_rebalancer, "dynamic", "static")
+      out << "    Kind:                     " << r_ctx.twoway_flow.flow_cutter.rebalancer.kind
           << "\n";
-      out << "    Rebalance both cuts:      "
-          << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.rebalance_both_cuts) << "\n";
       out << "    Abort on first cut:       "
           << yn(r_ctx.twoway_flow.flow_cutter.abort_on_first_cut) << "\n";
       out << "    Abort on candidate cut:   "
