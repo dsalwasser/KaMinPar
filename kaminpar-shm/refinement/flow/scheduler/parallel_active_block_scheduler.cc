@@ -61,6 +61,7 @@ bool ParallelActiveBlockScheduler::refine(
       LOG_WARNING << "Cannot use the flow rebalancer together with WHFC; disabling rebalancing.";
     }
 
+    SCOPED_TIMER("Initialize Gain Cache");
     _gain_cache.initialize(graph, p_graph);
   }
 
@@ -233,6 +234,8 @@ bool ParallelActiveBlockScheduler::refine(
 void ParallelActiveBlockScheduler::initialize_rebalancers(
     const PartitionedCSRGraph &p_graph, const CSRGraph &graph, const PartitionContext &p_ctx
 ) {
+  SCOPED_TIMER("Setup Rebalancers");
+
   if (_f_ctx.flow_cutter.rebalancer.kind != FlowRebalancerKind::ROUND_STATIC) {
     return;
   }

@@ -87,36 +87,39 @@ public:
         (overloaded_block == _block1) ? _precomputed_block1_moves : _precomputed_block2_moves;
     const BlockWeight max_block_weight = _max_block_weights[overloaded_block];
 
-    NodeID cur_move = 0;
-    EdgeWeight gain = 0;
-    while (_d_graph.block_weight(overloaded_block) > max_block_weight) {
-      while (true) {
-        if (cur_move == move_order.size()) {
-          return Result::failure();
+    return TIMED_SCOPE("Extract Nodes") {
+      NodeID cur_move = 0;
+      EdgeWeight gain = 0;
+
+      while (_d_graph.block_weight(overloaded_block) > max_block_weight) {
+        while (true) {
+          if (cur_move == move_order.size()) {
+            return Result::failure();
+          }
+
+          const auto [u, target_block] = move_order[cur_move++];
+          const BlockID u_block = _d_graph.block(u);
+
+          if (u_block != overloaded_block) {
+            continue;
+          }
+
+          if (_d_graph.block_weight(target_block) + _graph.node_weight(u) >
+              _max_block_weights[target_block]) {
+            continue;
+          }
+
+          gain += _gain_cache.gain(u, u_block, target_block);
+          _gain_cache.move(u, u_block, target_block);
+
+          _d_graph.set_block(u, target_block);
+          _moves.emplace_back(u, target_block);
+          break;
         }
-
-        const auto [u, target_block] = move_order[cur_move++];
-        const BlockID u_block = _d_graph.block(u);
-
-        if (u_block != overloaded_block) {
-          continue;
-        }
-
-        if (_d_graph.block_weight(target_block) + _graph.node_weight(u) >
-            _max_block_weights[target_block]) {
-          continue;
-        }
-
-        gain += _gain_cache.gain(u, u_block, target_block);
-        _gain_cache.move(u, u_block, target_block);
-
-        _d_graph.set_block(u, target_block);
-        _moves.emplace_back(u, target_block);
-        break;
       }
-    }
 
-    return Result::success(overloaded_block, gain, _moves);
+      return Result::success(overloaded_block, gain, _moves);
+    };
   }
 
   void revert_moves() override {
