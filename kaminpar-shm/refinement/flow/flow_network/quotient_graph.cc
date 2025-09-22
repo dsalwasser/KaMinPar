@@ -9,7 +9,8 @@ namespace kaminpar::shm {
 
 QuotientGraph::QuotientGraph(const PartitionedCSRGraph &p_graph)
     : _p_graph(p_graph),
-      _edges(p_graph.k() * p_graph.k()) {
+      _edges(p_graph.k() * p_graph.k()),
+      _nodes_per_block(p_graph.k()) {
   for (Edge &edge : _edges) {
     edge.cut_weight = 0;
     edge.total_gain = 0;
@@ -26,11 +27,16 @@ void QuotientGraph::reconstruct() {
     edge.cut_weight = 0;
   }
 
+  for (auto &nodes : _nodes_per_block) {
+    nodes.clear();
+  }
+
   const CSRGraph &graph = _p_graph.graph();
 
   EdgeWeight total_cut_weight = 0;
   for (const NodeID u : graph.nodes()) {
     const BlockID u_block = _p_graph.block(u);
+    _nodes_per_block[u_block].push_back(u);
 
     graph.adjacent_nodes(u, [&](const NodeID v, const EdgeWeight w) {
       const BlockID v_block = _p_graph.block(v);

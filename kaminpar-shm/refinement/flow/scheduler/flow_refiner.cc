@@ -15,7 +15,7 @@ FlowRefiner::FlowRefiner(
     const PartitionedCSRGraph &p_graph,
     const CSRGraph &graph,
     const GainCache &gain_cache,
-    FlowRebalancerMoves &rebalancer_moves,
+    SharedFlowRebalancerContext &rebalancer_context,
     const TimePoint start_time
 )
     : _p_graph(p_graph),
@@ -26,7 +26,7 @@ FlowRefiner::FlowRefiner(
     _flow_cutter_algorithm = std::make_unique<HyperFlowCutter>(p_ctx, f_ctx.flow_cutter);
   } else {
     _flow_cutter_algorithm = std::make_unique<FlowCutter>(
-        p_ctx, f_ctx.flow_cutter, p_graph, gain_cache, rebalancer_moves
+        p_ctx, f_ctx.flow_cutter, p_graph, gain_cache, rebalancer_context
     );
   }
 #else
@@ -34,8 +34,9 @@ FlowRefiner::FlowRefiner(
     LOG_WARNING << "WHFC requested but not available; using built-in FlowCutter as fallback.";
   }
 
-  _flow_cutter_algorithm =
-      std::make_unique<FlowCutter>(p_ctx, f_ctx.flow_cutter, p_graph, gain_cache, rebalancer_moves);
+  _flow_cutter_algorithm = std::make_unique<FlowCutter>(
+      p_ctx, f_ctx.flow_cutter, p_graph, gain_cache, rebalancer_context
+  );
 #endif
 
   _flow_cutter_algorithm->set_time_limit(f_ctx.time_limit, start_time);

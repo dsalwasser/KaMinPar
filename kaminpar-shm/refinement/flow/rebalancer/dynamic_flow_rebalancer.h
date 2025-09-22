@@ -29,9 +29,11 @@ public:
   DynamicFlowRebalancer(
       const PartitionedCSRGraph &p_graph,
       const GainCache &gain_cache,
-      const std::span<const BlockWeight> max_block_weights
+      const std::span<const BlockWeight> max_block_weights,
+      SharedFlowRebalancerContext &shared_ctx
   )
-      : Base(p_graph, gain_cache, max_block_weights) {}
+      : Base(p_graph, gain_cache, max_block_weights),
+        _shared_ctx(shared_ctx) {}
 
   void initialize(
       const bool source_side_cut, const BorderRegion &border_region, const FlowNetwork &flow_network
@@ -39,6 +41,7 @@ public:
     SCOPED_TIMER("Initialize Rebalancer");
 
     _source_side_cut = source_side_cut;
+    _border_region = &border_region;
     _flow_network = &flow_network;
 
     _block1 = border_region.block1();
@@ -76,8 +79,16 @@ public:
     TIMED_SCOPE("Insert Nodes") {
       Base::clear_nodes();
 
-      for (const NodeID u : _graph.nodes()) {
+      const std::span<const NodeID> candidate_nodes =
+          _source_side_moves ? _border_region->nodes_region2() : _border_region->nodes_region1();
+      for (const NodeID u : candidate_nodes) {
         if (_d_graph.block(u) == overloaded_block) {
+          Base::insert_node(u);
+        }
+      }
+
+      for (const NodeID u : _shared_ctx.nodes_in_block(overloaded_block)) {
+        if (_d_graph.block(u) == overloaded_block && !Base::contains_node(u)) {
           Base::insert_node(u);
         }
       }
@@ -149,6 +160,8 @@ private:
 private:
   bool _source_side_cut;
   const FlowNetwork *_flow_network;
+  const BorderRegion *_border_region;
+  SharedFlowRebalancerContext &_shared_ctx;
 
   BlockID _block1;
   BlockID _block2;

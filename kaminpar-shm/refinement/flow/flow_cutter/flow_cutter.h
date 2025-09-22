@@ -37,7 +37,7 @@ public:
       const FlowCutterContext &fc_ctx,
       const PartitionedCSRGraph &p_graph,
       const GainCache &gain_cache,
-      FlowRebalancerMoves &rebalancer_moves
+      SharedFlowRebalancerContext &rebalancer_context
   );
 
   [[nodiscard]] Result compute_cut(

@@ -31,10 +31,10 @@ public:
       const PartitionedCSRGraph &p_graph,
       const GainCache &gain_cache,
       const std::span<const BlockWeight> max_block_weights,
-      FlowRebalancerMoves &rebalancer_moves
+      SharedFlowRebalancerContext &shared_ctx
   )
       : Base(p_graph, gain_cache, max_block_weights),
-        _rebalancer_moves(rebalancer_moves) {}
+        _shared_ctx(shared_ctx) {}
 
   void initialize(
       const bool source_side_cut, const BorderRegion &border_region, const FlowNetwork &flow_network
@@ -135,16 +135,16 @@ public:
 
 private:
   std::span<const Move> fetch_precomputed_moves(const BlockID block) {
-    auto state = _rebalancer_moves.is_initialized(block);
-    if (state == FlowRebalancerMoves::kPendingInitialization) {
+    auto state = _shared_ctx.precompute_state(_block1);
+    if (state == SharedFlowRebalancerContext::kPendingInitialization) {
       do {
-        state = _rebalancer_moves.is_initialized(block);
-      } while (state == FlowRebalancerMoves::kPendingInitialization);
-    } else if (state == FlowRebalancerMoves::kUninitialized) {
+        state = _shared_ctx.precompute_state(block);
+      } while (state == SharedFlowRebalancerContext::kPendingInitialization);
+    } else if (state == SharedFlowRebalancerContext::kUninitialized) {
       precompute_moves(block);
     }
 
-    return _rebalancer_moves.moves(block);
+    return _shared_ctx.precomputed_moves(block);
   }
 
   void precompute_moves(const BlockID block) {
@@ -156,15 +156,15 @@ private:
     TIMED_SCOPE("Insert Nodes") {
       Base::clear_nodes();
 
-      for (const NodeID u : _graph.nodes()) {
-        if (_d_graph.block(u) == block) {
+      for (const NodeID u : _shared_ctx.nodes_in_block(block)) {
+        if (_d_graph.block(u) == block && !Base::contains_node(u)) {
           Base::insert_node(u);
         }
       }
     };
 
     TIMED_SCOPE("Extract Nodes") {
-      ScalableVector<Move> &moves = _rebalancer_moves.moves(block);
+      ScalableVector<Move> &moves = _shared_ctx.precomputed_moves(block);
       moves.clear();
 
       while (Base::has_next_node()) {
@@ -174,7 +174,7 @@ private:
       }
     };
 
-    _rebalancer_moves.set_initialized(block);
+    _shared_ctx.mark_moves_precomputed(block);
   }
 
   void initialize_state() {
@@ -197,11 +197,11 @@ private:
 private:
   bool _source_side_cut;
   const FlowNetwork *_flow_network;
+  SharedFlowRebalancerContext &_shared_ctx;
 
   BlockID _block1;
   BlockID _block2;
 
-  FlowRebalancerMoves &_rebalancer_moves;
   std::span<const Move> _precomputed_block1_moves;
   std::span<const Move> _precomputed_block2_moves;
 

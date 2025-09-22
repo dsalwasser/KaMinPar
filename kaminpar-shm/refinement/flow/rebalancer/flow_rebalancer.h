@@ -10,6 +10,7 @@
 #include "kaminpar-shm/kaminpar.h"
 #include "kaminpar-shm/refinement/flow/flow_network/border_region.h"
 #include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
+#include "kaminpar-shm/refinement/flow/flow_network/quotient_graph.h"
 #include "kaminpar-shm/refinement/gains/delta_gain_caches.h"
 
 #include "kaminpar-common/datastructures/binary_heap.h"
@@ -57,7 +58,7 @@ public:
   virtual const DeltaPartitionedCSRGraph &d_graph() const = 0;
 };
 
-class FlowRebalancerMoves {
+class SharedFlowRebalancerContext {
 public:
   using Move = FlowRebalancer::Move;
 
@@ -65,14 +66,23 @@ public:
   static constexpr std::uint8_t kPendingInitialization = 1;
   static constexpr std::uint8_t kInitialized = 2;
 
-  void initialize(const BlockID k) {
-    _initialized_moves.resize(k, static_array::noinit);
-    std::fill_n(_initialized_moves.begin(), k, kUninitialized);
-
-    _precomputed_moves.resize(k);
+public:
+  SharedFlowRebalancerContext(const QuotientGraph &quotient_graph)
+      : _quotient_graph(quotient_graph),
+        _initialized_moves(quotient_graph.num_blocks(), static_array::noinit),
+        _precomputed_moves(quotient_graph.num_blocks()) {
+    reset();
   }
 
-  std::uint8_t is_initialized(const BlockID block) {
+  [[nodiscard]] const tbb::concurrent_vector<NodeID> &nodes_in_block(const BlockID block) const {
+    return _quotient_graph.nodes(block);
+  }
+
+  [[nodiscard]] ScalableVector<Move> &precomputed_moves(const BlockID block) {
+    return _precomputed_moves[block];
+  }
+
+  [[nodiscard]] std::uint8_t precompute_state(const BlockID block) {
     std::uint8_t expected = kUninitialized;
     if (__atomic_compare_exchange_n(
             &_initialized_moves[block],
@@ -88,15 +98,17 @@ public:
     return __atomic_load_n(&_initialized_moves[block], __ATOMIC_ACQUIRE);
   }
 
-  void set_initialized(const BlockID block) {
+  void mark_moves_precomputed(const BlockID block) {
     __atomic_store_n(&_initialized_moves[block], kInitialized, __ATOMIC_RELAXED);
   }
 
-  ScalableVector<Move> &moves(const BlockID block) {
-    return _precomputed_moves[block];
+  void reset() {
+    std::fill_n(_initialized_moves.begin(), _quotient_graph.num_blocks(), kUninitialized);
   }
 
 private:
+  const QuotientGraph &_quotient_graph;
+
   StaticArray<std::uint8_t> _initialized_moves;
   ScalableVector<ScalableVector<Move>> _precomputed_moves;
 };
@@ -122,6 +134,10 @@ public:
 
   [[nodiscard]] bool has_next_node() const {
     return !_priority_queue.empty();
+  }
+
+  [[nodiscard]] bool contains_node(const NodeID u) const {
+    return _priority_queue.contains(u);
   }
 
   std::pair<NodeID, BlockID> next_node() {

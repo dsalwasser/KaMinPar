@@ -50,8 +50,16 @@ public:
 
   void add_cut_edges(std::span<const GraphEdge> new_cut_edges);
 
+  void move_node(const NodeID u, const BlockID target_block) {
+    _nodes_per_block[target_block].push_back(u);
+  }
+
   [[nodiscard]] BlockID num_blocks() const {
     return _p_graph.k();
+  }
+
+  [[nodiscard]] const tbb::concurrent_vector<NodeID> &nodes(const BlockID block) const {
+    return _nodes_per_block[block];
   }
 
   [[nodiscard]] EdgeWeight total_cut_weight() const {
@@ -94,6 +102,7 @@ private:
 
   EdgeWeight _total_cut_weight;
   ScalableVector<Edge> _edges;
+  ScalableVector<tbb::concurrent_vector<NodeID>> _nodes_per_block;
 };
 
 } // namespace kaminpar::shm

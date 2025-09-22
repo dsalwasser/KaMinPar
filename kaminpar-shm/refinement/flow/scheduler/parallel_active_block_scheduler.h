@@ -9,7 +9,6 @@
 #include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/kaminpar.h"
 #include "kaminpar-shm/refinement/flow/flow_network/quotient_graph.h"
-#include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 #include "kaminpar-shm/refinement/flow/scheduler/flow_refiner.h"
 #include "kaminpar-shm/refinement/flow/scheduler/scheduling/active_block_scheduling.h"
 #include "kaminpar-shm/refinement/gains/sparse_gain_cache.h"
@@ -116,7 +115,9 @@ private:
       QuotientCutEdges &new_cut_edges
   );
 
-  void apply_moves(std::span<const Move> moves, QuotientCutEdges &new_cut_edges);
+  void apply_moves(
+      std::span<const Move> moves, QuotientGraph &quotient_graph, QuotientCutEdges &new_cut_edges
+  );
 
   MoveAttempt commit_moves_if_feasible(
       EdgeWeight &cut_value,
@@ -139,10 +140,7 @@ private:
   PartitionedCSRGraph *_p_graph;
   const CSRGraph *_graph;
   const PartitionContext *_p_ctx;
-
   GainCache _gain_cache;
-  ScalableVector<ScalableVector<NodeID>> _nodes_per_block;
-  FlowRebalancerMoves _rebalancer_moves;
 
   StaticArray<bool> _active_blocks;
   std::unique_ptr<ActiveBlockScheduling> _active_block_scheduling;

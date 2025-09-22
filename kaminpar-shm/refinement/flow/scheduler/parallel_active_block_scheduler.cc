@@ -64,17 +64,11 @@ bool ParallelActiveBlockScheduler::refine(
     _gain_cache.initialize(graph, p_graph);
   }
 
+  SharedFlowRebalancerContext rebalancer_ctx(quotient_graph);
   LazyVector<FlowRefiner> refiners(
       [&] {
         return FlowRefiner(
-            p_ctx,
-            _f_ctx,
-            quotient_graph,
-            p_graph,
-            graph,
-            _gain_cache,
-            _rebalancer_moves,
-            start_time
+            p_ctx, _f_ctx, quotient_graph, p_graph, graph, _gain_cache, rebalancer_ctx, start_time
         );
       },
       num_parallel_searches
@@ -92,7 +86,7 @@ bool ParallelActiveBlockScheduler::refine(
     DBG << "Starting round " << num_round;
 
     if (_f_ctx.flow_cutter.rebalancer.enabled) {
-      _rebalancer_moves.initialize(p_graph.k());
+      rebalancer_ctx.reset();
     }
 
     const Scheduling scheduling =
@@ -188,6 +182,7 @@ bool ParallelActiveBlockScheduler::refine(
                     }
 
                     _gain_cache.move(move.node, old_block, move.new_block);
+                    quotient_graph.move_node(move.node, move.new_block);
                   }
                 }
               }
@@ -246,7 +241,7 @@ void ParallelActiveBlockScheduler::commit_moves(
     QuotientGraph &quotient_graph,
     QuotientCutEdges &new_cut_edges
 ) {
-  apply_moves(moves, new_cut_edges);
+  apply_moves(moves, quotient_graph, new_cut_edges);
 
   __atomic_fetch_sub(&cut_value, gain, __ATOMIC_RELAXED);
 
@@ -258,7 +253,7 @@ void ParallelActiveBlockScheduler::commit_moves(
 }
 
 void ParallelActiveBlockScheduler::apply_moves(
-    std::span<const Move> moves, QuotientCutEdges &new_cut_edges
+    std::span<const Move> moves, QuotientGraph &quotient_graph, QuotientCutEdges &new_cut_edges
 ) {
   new_cut_edges.clear();
 
@@ -291,6 +286,7 @@ void ParallelActiveBlockScheduler::apply_moves(
   if (_f_ctx.flow_cutter.rebalancer.enabled) {
     for (const Move &move : moves) {
       _gain_cache.move(move.node, move.old_block, move.new_block);
+      quotient_graph.move_node(move.node, move.new_block);
     }
   }
 }

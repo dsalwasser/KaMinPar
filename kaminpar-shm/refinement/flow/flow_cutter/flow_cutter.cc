@@ -20,7 +20,7 @@ FlowCutter::FlowCutter(
     const FlowCutterContext &fc_ctx,
     const PartitionedCSRGraph &p_graph,
     const GainCache &gain_cache,
-    FlowRebalancerMoves &rebalancer_moves
+    SharedFlowRebalancerContext &rebalancer_context
 )
     : _p_ctx(p_ctx),
       _fc_ctx(fc_ctx),
@@ -37,26 +37,26 @@ FlowCutter::FlowCutter(
     switch (_fc_ctx.rebalancer.kind) {
     case FlowRebalancerKind::DYNAMIC:
       _source_side_rebalancer = std::make_unique<DynamicFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights()
+          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       _sink_side_rebalancer = std::make_unique<DynamicFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights()
+          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       break;
     case FlowRebalancerKind::STATIC:
       _source_side_rebalancer = std::make_unique<StaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights()
+          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       _sink_side_rebalancer = std::make_unique<StaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights()
+          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       break;
     case FlowRebalancerKind::ROUND_STATIC:
       _source_side_rebalancer = std::make_unique<RoundStaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_moves
+          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       _sink_side_rebalancer = std::make_unique<RoundStaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_moves
+          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       break;
     }

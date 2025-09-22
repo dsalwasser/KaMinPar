@@ -5,7 +5,6 @@
 #include "kaminpar-shm/datastructures/partitioned_graph.h"
 #include "kaminpar-shm/kaminpar.h"
 #include "kaminpar-shm/refinement/flow/flow_network/quotient_graph.h"
-#include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 #include "kaminpar-shm/refinement/flow/scheduler/flow_refiner.h"
 #include "kaminpar-shm/refinement/flow/scheduler/scheduling/active_block_scheduling.h"
 #include "kaminpar-shm/refinement/flow/scheduler/scheduling/single_round_active_block_scheduler.h"
@@ -59,7 +58,7 @@ public:
   bool refine(PartitionedCSRGraph &p_graph, const CSRGraph &graph, const PartitionContext &p_ctx);
 
 private:
-  void apply_moves(std::span<const Move> moves);
+  void apply_moves(std::span<const Move> moves, QuotientGraph &quotient_graph);
 
 private:
   const TwowayFlowRefinementContext &_f_ctx;
@@ -67,10 +66,7 @@ private:
 
   PartitionedCSRGraph *_p_graph;
   const CSRGraph *_graph;
-
   GainCache _gain_cache;
-  ScalableVector<ScalableVector<NodeID>> _nodes_per_block;
-  FlowRebalancerMoves _rebalancer_moves;
 
   StaticArray<bool> _active_blocks;
   SingleRoundActiveBlockScheduling _active_block_scheduling;

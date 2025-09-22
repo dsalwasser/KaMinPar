@@ -31,7 +31,7 @@ public:
       const PartitionedCSRGraph &p_graph,
       const CSRGraph &graph,
       const GainCache &gain_cache,
-      FlowRebalancerMoves &rebalancer_moves,
+      SharedFlowRebalancerContext &rebalancer_context,
       TimePoint start_time
   );
 

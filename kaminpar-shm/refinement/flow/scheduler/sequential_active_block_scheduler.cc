@@ -42,8 +42,9 @@ bool SequentialActiveBlockScheduler::refine(
     _gain_cache.initialize(graph, p_graph);
   }
 
+  SharedFlowRebalancerContext rebalancer_ctx(quotient_graph);
   FlowRefiner refiner(
-      p_ctx, _f_ctx, quotient_graph, p_graph, graph, _gain_cache, _rebalancer_moves, start_time
+      p_ctx, _f_ctx, quotient_graph, p_graph, graph, _gain_cache, rebalancer_ctx, start_time
   );
 
   std::size_t num_round = 0;
@@ -57,7 +58,7 @@ bool SequentialActiveBlockScheduler::refine(
     DBG << "Starting round " << num_round;
 
     if (_f_ctx.flow_cutter.rebalancer.enabled) {
-      _rebalancer_moves.initialize(p_graph.k());
+      rebalancer_ctx.reset();
     }
 
     const SubroundScheduling active_block_pairs = TIMED_SCOPE("Compute Active Block Pairs") {
@@ -85,7 +86,7 @@ bool SequentialActiveBlockScheduler::refine(
           << result.gain << " (" << cut_value << " -> " << new_cut_value << ")";
 
       if (result.gain > 0 || (result.gain == 0 && result.improved_balance)) {
-        apply_moves(result.moves);
+        apply_moves(result.moves, quotient_graph);
 
         KASSERT(
             metrics::is_balanced(p_graph, p_ctx),
@@ -135,7 +136,9 @@ bool SequentialActiveBlockScheduler::refine(
   return found_improvement;
 }
 
-void SequentialActiveBlockScheduler::apply_moves(std::span<const Move> moves) {
+void SequentialActiveBlockScheduler::apply_moves(
+    std::span<const Move> moves, QuotientGraph &quotient_graph
+) {
   SCOPED_TIMER("Apply Moves");
 
   _new_cut_edges.clear();
@@ -168,6 +171,7 @@ void SequentialActiveBlockScheduler::apply_moves(std::span<const Move> moves) {
   if (_f_ctx.flow_cutter.rebalancer.enabled) {
     for (const Move &move : moves) {
       _gain_cache.move(move.node, move.old_block, move.new_block);
+      quotient_graph.move_node(move.node, move.new_block);
     }
   }
 }
