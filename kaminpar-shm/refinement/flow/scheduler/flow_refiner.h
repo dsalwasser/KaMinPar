@@ -31,7 +31,8 @@ public:
       const PartitionedCSRGraph &p_graph,
       const CSRGraph &graph,
       const GainCache &gain_cache,
-      const TimePoint &start_time
+      FlowRebalancerMoves &rebalancer_moves,
+      TimePoint start_time
   );
 
   FlowRefiner(FlowRefiner &&) noexcept = default;
@@ -40,9 +41,7 @@ public:
   FlowRefiner(const FlowRefiner &) = delete;
   FlowRefiner &operator=(const FlowRefiner &) = delete;
 
-  [[nodiscard]] Result refine(
-      BlockID block1, BlockID block2, FlowRebalancerMoves rebalancer_moves, bool run_sequentially
-  );
+  [[nodiscard]] Result refine(BlockID block1, BlockID block2, bool run_sequentially);
 
   void free();
 

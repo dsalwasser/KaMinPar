@@ -3,7 +3,6 @@
 #include <algorithm>
 
 #include "kaminpar-shm/metrics.h"
-#include "kaminpar-shm/refinement/flow/rebalancer/round_static_flow_rebalancer.h"
 
 #include "kaminpar-common/assert.h"
 #include "kaminpar-common/timer.h"
@@ -43,7 +42,9 @@ bool SequentialActiveBlockScheduler::refine(
     _gain_cache.initialize(graph, p_graph);
   }
 
-  FlowRefiner refiner(p_ctx, _f_ctx, quotient_graph, p_graph, graph, _gain_cache, start_time);
+  FlowRefiner refiner(
+      p_ctx, _f_ctx, quotient_graph, p_graph, graph, _gain_cache, _rebalancer_moves, start_time
+  );
 
   std::size_t num_round = 0;
   bool found_improvement = false;
@@ -56,7 +57,7 @@ bool SequentialActiveBlockScheduler::refine(
     DBG << "Starting round " << num_round;
 
     if (_f_ctx.flow_cutter.rebalancer.enabled) {
-      initialize_rebalancers(p_graph, graph, p_ctx);
+      _rebalancer_moves.initialize(p_graph.k());
     }
 
     const SubroundScheduling active_block_pairs = TIMED_SCOPE("Compute Active Block Pairs") {
@@ -71,9 +72,7 @@ bool SequentialActiveBlockScheduler::refine(
       IF_STATS _stats.num_searches += 1;
       DBG << "Scheduling block pair " << block1 << " and " << block2;
 
-      const Result result = refiner.refine(
-          block1, block2, flow_rebalancer_moves(block1, block2), _f_ctx.run_sequentially
-      );
+      const Result result = refiner.refine(block1, block2, _f_ctx.run_sequentially);
 
       if (result.time_limit_exceeded) {
         LOG_WARNING << "Time limit exceeded during flow refinement";
@@ -134,47 +133,6 @@ bool SequentialActiveBlockScheduler::refine(
   IF_STATS _stats.print();
 
   return found_improvement;
-}
-
-void SequentialActiveBlockScheduler::initialize_rebalancers(
-    const PartitionedCSRGraph &p_graph, const CSRGraph &graph, const PartitionContext &p_ctx
-) {
-  SCOPED_TIMER("Setup Rebalancers");
-
-  if (_f_ctx.flow_cutter.rebalancer.kind != FlowRebalancerKind::ROUND_STATIC) {
-    return;
-  }
-
-  if (_nodes_per_block.size() < p_graph.k()) {
-    _nodes_per_block.resize(p_graph.k());
-  }
-  for (auto &nodes : _nodes_per_block) {
-    nodes.clear();
-  }
-
-  if (_moves_per_block.size() < p_graph.k()) {
-    _moves_per_block.resize(p_graph.k());
-  }
-
-  for (const NodeID u : graph.nodes()) {
-    const BlockID u_block = p_graph.block(u);
-    _nodes_per_block[u_block].push_back(u);
-  }
-
-  RoundStaticFlowRebalancer<GainCache> flow_rebalancer(
-      p_graph, _gain_cache, p_ctx.max_block_weights()
-  );
-  for (BlockID block = 0; block < p_graph.k(); ++block) {
-    _moves_per_block[block] = flow_rebalancer.compute_moves(block, _nodes_per_block[block]);
-  }
-}
-
-FlowRebalancerMoves
-SequentialActiveBlockScheduler::flow_rebalancer_moves(const BlockID block1, const BlockID block2) {
-  return (_f_ctx.flow_cutter.rebalancer.enabled &&
-          _f_ctx.flow_cutter.rebalancer.kind == FlowRebalancerKind::ROUND_STATIC)
-             ? FlowRebalancerMoves(_moves_per_block[block1], _moves_per_block[block2])
-             : FlowRebalancerMoves();
 }
 
 void SequentialActiveBlockScheduler::apply_moves(std::span<const Move> moves) {

@@ -23,10 +23,7 @@ HyperFlowCutter::HyperFlowCutter(const PartitionContext &p_ctx, const FlowCutter
 }
 
 HyperFlowCutter::Result HyperFlowCutter::compute_cut(
-    const BorderRegion &border_region,
-    const FlowNetwork &flow_network,
-    [[maybe_unused]] const FlowRebalancerMoves rebalancer_moves,
-    bool run_sequentially
+    const BorderRegion &border_region, const FlowNetwork &flow_network, bool run_sequentially
 ) {
   SCOPED_TIMER("Run WHFC");
 

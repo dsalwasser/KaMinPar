@@ -8,7 +8,6 @@
 #include "kaminpar-shm/kaminpar.h"
 #include "kaminpar-shm/refinement/flow/flow_network/border_region.h"
 #include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
-#include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 
 namespace kaminpar::shm {
 
@@ -56,15 +55,12 @@ public:
   virtual ~FlowCutterAlgorithm() = default;
 
   [[nodiscard]] virtual Result compute_cut(
-      const BorderRegion &border_region,
-      const FlowNetwork &flow_network,
-      FlowRebalancerMoves rebalancer_moves,
-      bool run_sequentially
+      const BorderRegion &border_region, const FlowNetwork &flow_network, bool run_sequentially
   ) = 0;
 
   virtual void free() = 0;
 
-  void set_time_limit(const std::size_t time_limit, TimePoint start_time) {
+  void set_time_limit(const std::size_t time_limit, const TimePoint start_time) {
     _has_time_limit = time_limit != std::numeric_limits<std::size_t>::max();
     _time_limit = time_limit;
     _start_time = start_time;

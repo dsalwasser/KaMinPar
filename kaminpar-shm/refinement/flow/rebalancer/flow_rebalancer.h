@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cstdint>
 #include <span>
 
 #include "kaminpar-shm/datastructures/csr_graph.h"
@@ -55,11 +57,48 @@ public:
   virtual const DeltaPartitionedCSRGraph &d_graph() const = 0;
 };
 
-struct FlowRebalancerMoves {
+class FlowRebalancerMoves {
+public:
   using Move = FlowRebalancer::Move;
 
-  std::span<const Move> source_side_moves;
-  std::span<const Move> sink_side_moves;
+  static constexpr std::uint8_t kUninitialized = 0;
+  static constexpr std::uint8_t kPendingInitialization = 1;
+  static constexpr std::uint8_t kInitialized = 2;
+
+  void initialize(const BlockID k) {
+    _initialized_moves.resize(k, static_array::noinit);
+    std::fill_n(_initialized_moves.begin(), k, kUninitialized);
+
+    _precomputed_moves.resize(k);
+  }
+
+  std::uint8_t is_initialized(const BlockID block) {
+    std::uint8_t expected = kUninitialized;
+    if (__atomic_compare_exchange_n(
+            &_initialized_moves[block],
+            &expected,
+            kPendingInitialization,
+            false,
+            __ATOMIC_ACQ_REL,
+            __ATOMIC_ACQUIRE
+        )) {
+      return kUninitialized;
+    }
+
+    return __atomic_load_n(&_initialized_moves[block], __ATOMIC_ACQUIRE);
+  }
+
+  void set_initialized(const BlockID block) {
+    __atomic_store_n(&_initialized_moves[block], kInitialized, __ATOMIC_RELAXED);
+  }
+
+  ScalableVector<Move> &moves(const BlockID block) {
+    return _precomputed_moves[block];
+  }
+
+private:
+  StaticArray<std::uint8_t> _initialized_moves;
+  ScalableVector<ScalableVector<Move>> _precomputed_moves;
 };
 
 template <typename GainCache> class FlowRebalancerBase : public FlowRebalancer {

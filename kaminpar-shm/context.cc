@@ -790,6 +790,8 @@ std::ostream &operator<<(std::ostream &out, const RefinementContext &r_ctx) {
     out << "  Flow network construction:  " << "\n";
     out << "    Deterministic:            " << yn(r_ctx.twoway_flow.construction.deterministic)
         << "\n";
+    out << "    Small graph threshold:    " << r_ctx.twoway_flow.construction.small_graph_threshold
+        << "\n";
     out << "    Border region scaling:    "
         << r_ctx.twoway_flow.construction.border_region_scaling_factor << "\n";
     out << "    Max border distance:      " << r_ctx.twoway_flow.construction.max_border_distance
@@ -799,6 +801,8 @@ std::ostream &operator<<(std::ostream &out, const RefinementContext &r_ctx) {
         << yn(r_ctx.twoway_flow.flow_cutter.use_whfc, "WHFC", "Built-in") << "\n";
     out << "    Deterministic piercing:   "
         << yn(r_ctx.twoway_flow.flow_cutter.piercing.deterministic) << "\n";
+    out << "    Small network threshold:  "
+        << r_ctx.twoway_flow.flow_cutter.small_flow_network_threshold << "\n";
     out << "    Determine cut-distance:   "
         << yn(r_ctx.twoway_flow.flow_cutter.piercing.determine_distance_from_cut) << "\n";
     out << "    Fallback heuristic:       "

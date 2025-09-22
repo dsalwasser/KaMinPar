@@ -12,7 +12,6 @@
 #include "kaminpar-shm/refinement/flow/flow_cutter/flow_cutter_algorithm.h"
 #include "kaminpar-shm/refinement/flow/flow_network/border_region.h"
 #include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
-#include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 #include "kaminpar-shm/refinement/flow/util/breadth_first_search.h"
 
 #include "kaminpar-common/datastructures/marker.h"
@@ -31,10 +30,7 @@ public:
   HyperFlowCutter(const PartitionContext &p_ctx, const FlowCutterContext &fc_ctx);
 
   [[nodiscard]] virtual Result compute_cut(
-      const BorderRegion &border_region,
-      const FlowNetwork &flow_network,
-      FlowRebalancerMoves rebalancer_moves,
-      bool run_sequentially
+      const BorderRegion &border_region, const FlowNetwork &flow_network, bool run_sequentially
   ) override;
 
   void free() override;

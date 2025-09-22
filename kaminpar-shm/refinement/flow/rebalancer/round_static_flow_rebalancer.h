@@ -30,9 +30,11 @@ public:
   RoundStaticFlowRebalancer(
       const PartitionedCSRGraph &p_graph,
       const GainCache &gain_cache,
-      const std::span<const BlockWeight> max_block_weights
+      const std::span<const BlockWeight> max_block_weights,
+      FlowRebalancerMoves &rebalancer_moves
   )
-      : Base(p_graph, gain_cache, max_block_weights) {}
+      : Base(p_graph, gain_cache, max_block_weights),
+        _rebalancer_moves(rebalancer_moves) {}
 
   void initialize(
       const bool source_side_cut, const BorderRegion &border_region, const FlowNetwork &flow_network
@@ -45,18 +47,9 @@ public:
     _block1 = border_region.block1();
     _block2 = border_region.block2();
 
-    _d_graph.clear();
-    _gain_cache.clear();
-
-    const BlockID target_block = source_side_cut ? border_region.block2() : border_region.block1();
-    for (const auto &[u, _] : flow_network.global_to_local_mapping.entries()) {
-      const BlockID u_block = _d_graph.block(u);
-
-      if (u_block != target_block) {
-        _d_graph.set_block(u, target_block);
-        _gain_cache.move(u, u_block, target_block);
-      }
-    }
+    _precomputed_block1_moves = fetch_precomputed_moves(_block1);
+    _precomputed_block2_moves = fetch_precomputed_moves(_block2);
+    initialize_state();
   }
 
   void update_nodes(const std::span<const NodeID> nodes) override {
@@ -136,13 +129,25 @@ public:
     _moves.clear();
   }
 
-  void set_moves(const FlowRebalancerMoves moves) {
-    _precomputed_block1_moves = moves.source_side_moves;
-    _precomputed_block2_moves = moves.sink_side_moves;
+  [[nodiscard]] const DeltaPartitionedCSRGraph &d_graph() const override {
+    return _d_graph;
   }
 
-  [[nodiscard]] ScalableVector<Move>
-  compute_moves(const BlockID block, const std::span<const NodeID> nodes) {
+private:
+  std::span<const Move> fetch_precomputed_moves(const BlockID block) {
+    auto state = _rebalancer_moves.is_initialized(block);
+    if (state == FlowRebalancerMoves::kPendingInitialization) {
+      do {
+        state = _rebalancer_moves.is_initialized(block);
+      } while (state == FlowRebalancerMoves::kPendingInitialization);
+    } else if (state == FlowRebalancerMoves::kUninitialized) {
+      precompute_moves(block);
+    }
+
+    return _rebalancer_moves.moves(block);
+  }
+
+  void precompute_moves(const BlockID block) {
     SCOPED_TIMER("Compute Move Order");
 
     _d_graph.clear();
@@ -151,15 +156,17 @@ public:
     TIMED_SCOPE("Insert Nodes") {
       Base::clear_nodes();
 
-      for (const NodeID u : nodes) {
-        KASSERT(_d_graph.block(u) == block);
-        Base::insert_node(u);
+      for (const NodeID u : _graph.nodes()) {
+        if (_d_graph.block(u) == block) {
+          Base::insert_node(u);
+        }
       }
     };
 
-    ScalableVector<Move> moves;
-
     TIMED_SCOPE("Extract Nodes") {
+      ScalableVector<Move> &moves = _rebalancer_moves.moves(block);
+      moves.clear();
+
       while (Base::has_next_node()) {
         const auto [u, target_block] = Base::next_node();
         Base::move_node(u, block, target_block);
@@ -167,11 +174,24 @@ public:
       }
     };
 
-    return moves;
+    _rebalancer_moves.set_initialized(block);
   }
 
-  [[nodiscard]] const DeltaPartitionedCSRGraph &d_graph() const override {
-    return _d_graph;
+  void initialize_state() {
+    SCOPED_TIMER("Initialize State");
+
+    _d_graph.clear();
+    _gain_cache.clear();
+
+    const BlockID target_block = _source_side_cut ? _block2 : _block1;
+    for (const auto &[u, _] : _flow_network->global_to_local_mapping.entries()) {
+      const BlockID u_block = _d_graph.block(u);
+
+      if (u_block != target_block) {
+        _d_graph.set_block(u, target_block);
+        _gain_cache.move(u, u_block, target_block);
+      }
+    }
   }
 
 private:
@@ -181,6 +201,7 @@ private:
   BlockID _block1;
   BlockID _block2;
 
+  FlowRebalancerMoves &_rebalancer_moves;
   std::span<const Move> _precomputed_block1_moves;
   std::span<const Move> _precomputed_block2_moves;
 

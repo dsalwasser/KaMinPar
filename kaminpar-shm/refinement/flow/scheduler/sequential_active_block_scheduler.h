@@ -59,12 +59,6 @@ public:
   bool refine(PartitionedCSRGraph &p_graph, const CSRGraph &graph, const PartitionContext &p_ctx);
 
 private:
-  void initialize_rebalancers(
-      const PartitionedCSRGraph &p_graph, const CSRGraph &graph, const PartitionContext &p_ctx
-  );
-
-  [[nodiscard]] FlowRebalancerMoves flow_rebalancer_moves(BlockID block1, BlockID block2);
-
   void apply_moves(std::span<const Move> moves);
 
 private:
@@ -76,7 +70,7 @@ private:
 
   GainCache _gain_cache;
   ScalableVector<ScalableVector<NodeID>> _nodes_per_block;
-  ScalableVector<ScalableVector<FlowRebalancer::Move>> _moves_per_block;
+  FlowRebalancerMoves _rebalancer_moves;
 
   StaticArray<bool> _active_blocks;
   SingleRoundActiveBlockScheduling _active_block_scheduling;

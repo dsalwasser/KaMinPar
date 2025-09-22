@@ -270,6 +270,7 @@ struct FlowSchedulerContext {
 
 struct FlowNetworkConstructionContext {
   bool deterministic;
+  NodeID small_graph_threshold;
 
   double border_region_scaling_factor;
   NodeID max_border_distance;

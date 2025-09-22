@@ -680,6 +680,14 @@ CLI::Option_group *create_twoway_flow_refinement_options(CLI::App *app, Context 
       ->capture_default_str();
   twoway_flow
       ->add_option(
+          "--r-twoway-flow-small-graph-threshold",
+          ctx.refinement.twoway_flow.construction.small_graph_threshold,
+          "If the size of graph is below this threshold, always use the sequential flow network "
+          "construction algorithm."
+      )
+      ->capture_default_str();
+  twoway_flow
+      ->add_option(
           "--r-twoway-flow-border-region-scaling-factor",
           ctx.refinement.twoway_flow.construction.border_region_scaling_factor,
           "Scaling factor for the border region size, i.e. the alpha in (1 + alpha * epsilon) * "

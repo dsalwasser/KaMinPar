@@ -47,18 +47,7 @@ public:
     _initialized_source_side_moves = false;
     _initialized_sink_side_moves = false;
 
-    _d_graph.clear();
-    _gain_cache.clear();
-
-    const BlockID target_block = source_side_cut ? border_region.block2() : border_region.block1();
-    for (const auto &[u, _] : flow_network.global_to_local_mapping.entries()) {
-      const BlockID u_block = _d_graph.block(u);
-
-      if (u_block != target_block) {
-        _d_graph.set_block(u, target_block);
-        _gain_cache.move(u, u_block, target_block);
-      }
-    }
+    initialize_state();
   }
 
   void update_nodes(const std::span<const NodeID> nodes) override {
@@ -213,6 +202,24 @@ private:
 
   [[nodiscard]] const DeltaPartitionedCSRGraph &d_graph() const override {
     return _d_graph;
+  }
+
+private:
+  void initialize_state() {
+    SCOPED_TIMER("Initialize State");
+
+    _d_graph.clear();
+    _gain_cache.clear();
+
+    const BlockID target_block = _source_side_cut ? _block2 : _block1;
+    for (const auto &[u, _] : _flow_network->global_to_local_mapping.entries()) {
+      const BlockID u_block = _d_graph.block(u);
+
+      if (u_block != target_block) {
+        _d_graph.set_block(u, target_block);
+        _gain_cache.move(u, u_block, target_block);
+      }
+    }
   }
 
 private:

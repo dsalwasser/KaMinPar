@@ -223,6 +223,7 @@ Context create_default_context() {
                                       .construction =
                                           {
                                               .deterministic = false,
+                                              .small_graph_threshold = 65536,
                                               .border_region_scaling_factor = 16,
                                               .max_border_distance = 20,
                                           },
@@ -300,6 +301,7 @@ Context create_default_context() {
                               .construction =
                                   {
                                       .deterministic = false,
+                                      .small_graph_threshold = 65536,
                                       .border_region_scaling_factor = 16,
                                       .max_border_distance = 20,
                                   },
@@ -394,6 +396,7 @@ Context create_default_context() {
                       .construction =
                           {
                               .deterministic = false,
+                              .small_graph_threshold = 65536,
                               .border_region_scaling_factor = 16,
                               .max_border_distance = 20,
                           },

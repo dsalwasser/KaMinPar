@@ -19,7 +19,8 @@ FlowCutter::FlowCutter(
     const PartitionContext &p_ctx,
     const FlowCutterContext &fc_ctx,
     const PartitionedCSRGraph &p_graph,
-    const GainCache &gain_cache
+    const GainCache &gain_cache,
+    FlowRebalancerMoves &rebalancer_moves
 )
     : _p_ctx(p_ctx),
       _fc_ctx(fc_ctx),
@@ -52,10 +53,10 @@ FlowCutter::FlowCutter(
       break;
     case FlowRebalancerKind::ROUND_STATIC:
       _source_side_rebalancer = std::make_unique<RoundStaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights()
+          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_moves
       );
       _sink_side_rebalancer = std::make_unique<RoundStaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights()
+          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_moves
       );
       break;
     }
@@ -63,10 +64,7 @@ FlowCutter::FlowCutter(
 };
 
 FlowCutter::Result FlowCutter::compute_cut(
-    const BorderRegion &border_region,
-    const FlowNetwork &flow_network,
-    const FlowRebalancerMoves rebalancer_moves,
-    const bool run_sequentially
+    const BorderRegion &border_region, const FlowNetwork &flow_network, const bool run_sequentially
 ) {
   SCOPED_TIMER("Run FlowCutter");
 
@@ -76,7 +74,7 @@ FlowCutter::Result FlowCutter::compute_cut(
   _run_sequentially = run_sequentially || (flow_network.graph.n() + flow_network.graph.m()) <
                                               _fc_ctx.small_flow_network_threshold;
 
-  initialize(border_region, flow_network, rebalancer_moves);
+  initialize(border_region, flow_network);
   run_flow_cutter(border_region, flow_network);
 
   if (time_limit_exceeded()) {
@@ -86,11 +84,7 @@ FlowCutter::Result FlowCutter::compute_cut(
   return Result(_gain, _improve_balance, _moves);
 }
 
-void FlowCutter::initialize(
-    const BorderRegion &border_region,
-    const FlowNetwork &flow_network,
-    const FlowRebalancerMoves rebalancer_moves
-) {
+void FlowCutter::initialize(const BorderRegion &border_region, const FlowNetwork &flow_network) {
   _source_side_border_nodes.clear();
   _source_side_border_nodes.push_back(flow_network.source);
 
@@ -122,17 +116,8 @@ void FlowCutter::initialize(
     );
   };
 
-  if (_fc_ctx.rebalancer.enabled) {
-    _source_side_rebalancer->initialize(kSourceTag, border_region, flow_network);
-    _sink_side_rebalancer->initialize(kSinkTag, border_region, flow_network);
-
-    if (_fc_ctx.rebalancer.kind == FlowRebalancerKind::ROUND_STATIC) {
-      dynamic_cast<RoundStaticFlowRebalancer<GainCache> *>(_source_side_rebalancer.get())
-          ->set_moves(rebalancer_moves);
-      dynamic_cast<RoundStaticFlowRebalancer<GainCache> *>(_sink_side_rebalancer.get())
-          ->set_moves(rebalancer_moves);
-    }
-  }
+  _initialized_source_side_rebalancer = false;
+  _initialized_sink_side_rebalancer = false;
 
   _gain = 0;
   _improve_balance = false;
@@ -269,6 +254,18 @@ void FlowCutter::run_flow_cutter(
     const bool pierce_on_source_side = source_side_weight <= sink_side_weight;
 
     if (_fc_ctx.rebalancer.enabled) {
+      if (pierce_on_source_side) {
+        if (!_initialized_source_side_rebalancer) {
+          _initialized_source_side_rebalancer = true;
+          _source_side_rebalancer->initialize(kSourceTag, border_region, flow_network);
+        }
+      } else {
+        if (!_initialized_sink_side_rebalancer) {
+          _initialized_sink_side_rebalancer = true;
+          _sink_side_rebalancer->initialize(kSinkTag, border_region, flow_network);
+        }
+      }
+
       FlowRebalancer *rebalancer =
           pierce_on_source_side ? _source_side_rebalancer.get() : _sink_side_rebalancer.get();
       rebalancer->update_nodes(

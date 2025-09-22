@@ -36,24 +36,18 @@ public:
       const PartitionContext &p_ctx,
       const FlowCutterContext &fc_ctx,
       const PartitionedCSRGraph &p_graph,
-      const GainCache &gain_cache
+      const GainCache &gain_cache,
+      FlowRebalancerMoves &rebalancer_moves
   );
 
   [[nodiscard]] Result compute_cut(
-      const BorderRegion &border_region,
-      const FlowNetwork &flow_network,
-      FlowRebalancerMoves rebalancer_moves,
-      bool run_sequentially
+      const BorderRegion &border_region, const FlowNetwork &flow_network, bool run_sequentially
   ) override;
 
   void free() override;
 
 private:
-  void initialize(
-      const BorderRegion &border_region,
-      const FlowNetwork &flow_network,
-      FlowRebalancerMoves rebalancer_moves
-  );
+  void initialize(const BorderRegion &border_region, const FlowNetwork &flow_network);
 
   void run_flow_cutter(const BorderRegion &border_region, const FlowNetwork &flow_network);
 
@@ -103,6 +97,8 @@ private:
   Marker<> _source_side_piercing_node_candidates_marker;
   Marker<> _sink_side_piercing_node_candidates_marker;
 
+  bool _initialized_source_side_rebalancer;
+  bool _initialized_sink_side_rebalancer;
   std::unique_ptr<FlowRebalancer> _source_side_rebalancer;
   std::unique_ptr<FlowRebalancer> _sink_side_rebalancer;
 
