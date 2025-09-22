@@ -806,6 +806,12 @@ CLI::Option_group *create_twoway_flow_refinement_options(CLI::App *app, Context 
       ->capture_default_str();
   twoway_flow
       ->add_option(
+          "--r-twoway-flow-rebalance-final-cut",
+          ctx.refinement.twoway_flow.flow_cutter.rebalancer.rebalance_final_cut
+      )
+      ->capture_default_str();
+  twoway_flow
+      ->add_option(
           "--r-twoway-flow-abort-on-candidate-cut",
           ctx.refinement.twoway_flow.flow_cutter.rebalancer.abort_on_candidate_cut
       )

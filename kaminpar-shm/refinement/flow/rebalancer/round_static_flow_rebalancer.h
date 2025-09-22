@@ -8,6 +8,7 @@
 #include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 
+#include "kaminpar-common/datastructures/marker.h"
 #include "kaminpar-common/datastructures/scalable_vector.h"
 #include "kaminpar-common/timer.h"
 
@@ -42,6 +43,7 @@ public:
     SCOPED_TIMER("Initialize Rebalancer");
 
     _source_side_cut = source_side_cut;
+    _border_region = &border_region;
     _flow_network = &flow_network;
 
     _block1 = border_region.block1();
@@ -50,6 +52,8 @@ public:
     _precomputed_block1_moves = fetch_precomputed_moves(_block1);
     _precomputed_block2_moves = fetch_precomputed_moves(_block2);
     initialize_state();
+
+    _moves.clear();
   }
 
   void update_nodes(const std::span<const NodeID> nodes) override {
@@ -133,6 +137,75 @@ public:
     return _d_graph;
   }
 
+  [[nodiscard]] Result rebalance_cut(const bool source_side_cut, const Marker<> &cut_state) {
+    KASSERT(_moves.empty());
+
+    TIMED_SCOPE("Initialize State") {
+      _d_graph.clear();
+      _gain_cache.clear();
+
+      const BlockID block1 = source_side_cut ? _block1 : _block2;
+      const BlockID block2 = source_side_cut ? _block2 : _block1;
+      for (const auto &[u, u_local] : _flow_network->global_to_local_mapping.entries()) {
+        const BlockID u_block = _d_graph.block(u);
+        const BlockID target_block = cut_state.get(u_local) ? block1 : block2;
+
+        if (u_block != target_block) {
+          _d_graph.set_block(u, target_block);
+          _gain_cache.move(u, u_block, target_block);
+        }
+      }
+    };
+
+    const BlockID overloaded_block =
+        (_d_graph.block_weight(_block1) > _max_block_weights[_block1]) ? _block1 : _block2;
+    const BlockWeight max_block_weight = _max_block_weights[overloaded_block];
+
+    TIMED_SCOPE("Insert Nodes") {
+      Base::clear_nodes();
+
+      const std::span<const NodeID> candidate_nodes =
+          _source_side_moves ? _border_region->nodes_region2() : _border_region->nodes_region1();
+      for (const NodeID u : candidate_nodes) {
+        if (_d_graph.block(u) == overloaded_block) {
+          Base::insert_node(u);
+        }
+      }
+
+      for (const NodeID u : _shared_ctx.nodes_in_block(overloaded_block)) {
+        if (_d_graph.block(u) == overloaded_block && !Base::contains_node(u)) {
+          Base::insert_node(u);
+        }
+      }
+    };
+
+    return TIMED_SCOPE("Extract Nodes") {
+      EdgeWeight gain = 0;
+
+      while (_d_graph.block_weight(overloaded_block) > max_block_weight) {
+        while (true) {
+          if (!Base::has_next_node()) {
+            return Result::failure();
+          }
+
+          const auto [u, target_block] = Base::next_node();
+          if (_d_graph.block_weight(target_block) + _graph.node_weight(u) >
+              _max_block_weights[target_block]) {
+            Base::insert_node(u);
+            continue;
+          }
+
+          gain += Base::move_node(u, overloaded_block, target_block);
+          _moves.emplace_back(u, target_block);
+
+          break;
+        }
+      }
+
+      return Result::success(overloaded_block, gain, _moves);
+    };
+  }
+
 private:
   std::span<const Move> fetch_precomputed_moves(const BlockID block) {
     auto state = _shared_ctx.precompute_state(block);
@@ -197,6 +270,7 @@ private:
 private:
   bool _source_side_cut;
   const FlowNetwork *_flow_network;
+  const BorderRegion *_border_region;
   SharedFlowRebalancerContext &_shared_ctx;
 
   BlockID _block1;

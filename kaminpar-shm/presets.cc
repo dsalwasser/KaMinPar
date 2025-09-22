@@ -251,6 +251,7 @@ Context create_default_context() {
                                                   {
                                                       .enabled = false,
                                                       .kind = FlowRebalancerKind::DYNAMIC,
+                                                      .rebalance_final_cut = false,
                                                       .abort_on_candidate_cut = true,
                                                       .abort_on_improved_cut = false,
                                                       .abort_on_stable_improved_cut = false,
@@ -328,6 +329,7 @@ Context create_default_context() {
                                           {
                                               .enabled = false,
                                               .kind = FlowRebalancerKind::DYNAMIC,
+                                              .rebalance_final_cut = false,
                                               .abort_on_candidate_cut = true,
                                               .abort_on_improved_cut = false,
                                               .abort_on_stable_improved_cut = false,
@@ -422,6 +424,7 @@ Context create_default_context() {
                                   {
                                       .enabled = false,
                                       .kind = FlowRebalancerKind::DYNAMIC,
+                                      .rebalance_final_cut = false,
                                       .abort_on_candidate_cut = true,
                                       .abort_on_improved_cut = false,
                                       .abort_on_stable_improved_cut = false,

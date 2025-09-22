@@ -81,6 +81,11 @@ FlowCutter::Result FlowCutter::compute_cut(
     return Result::time_limit();
   }
 
+  if (_fc_ctx.rebalancer.rebalance_final_cut &&
+      _fc_ctx.rebalancer.kind == FlowRebalancerKind::ROUND_STATIC && _found_rebalanced_cut) {
+    rebalance_best_cut(border_region, flow_network);
+  }
+
   return Result(_gain, _improve_balance, _moves);
 }
 
@@ -118,6 +123,9 @@ void FlowCutter::initialize(const BorderRegion &border_region, const FlowNetwork
 
   _initialized_source_side_rebalancer = false;
   _initialized_sink_side_rebalancer = false;
+
+  _found_rebalanced_cut = false;
+  _rebalanced_cut_state.resize(flow_network.graph.n());
 
   _gain = 0;
   _improve_balance = false;
@@ -608,43 +616,98 @@ void FlowCutter::rebalance(
     if (total_gain > _gain) {
       SCOPED_TIMER("Compute Moves");
 
+      _found_rebalanced_cut = true;
+      _rebalanced_cut_flow_cutter_gain = flow_cutter_gain;
+      store_rebalancing_cut(source_side_cut);
+
       _gain = total_gain;
       _improve_balance = false;
-      _moves.clear();
-
-      const BlockID block1 = border_region.block1();
-      const BlockID block2 = border_region.block2();
-
-      const BlockID overloaded_block = rebalancer_result.overloaded_block;
-      const DeltaPartitionedCSRGraph &d_graph = flow_rebalancer->d_graph();
-
-      for (const NodeID u : border_region.nodes_region1()) {
-        const BlockID u_block = d_graph.block(u);
-
-        if (u_block != block1) {
-          _moves.emplace_back(u, block1, u_block);
-        };
-      }
-
-      for (const NodeID u : border_region.nodes_region2()) {
-        const BlockID u_block = d_graph.block(u);
-
-        if (u_block != block2) {
-          _moves.emplace_back(u, block2, u_block);
-        };
-      }
-
-      for (const auto &[u, target_block] : rebalancer_result.moves) {
-        if (flow_network.global_to_local_mapping.contains(u)) {
-          continue;
-        }
-
-        _moves.emplace_back(u, overloaded_block, target_block);
-      }
+      save_rebalancing_moves(rebalancer_result, border_region, flow_network, flow_rebalancer);
     }
   }
 
   flow_rebalancer->revert_moves();
+}
+
+void FlowCutter::rebalance_best_cut(
+    const BorderRegion &border_region, const FlowNetwork &flow_network
+) {
+  RoundStaticFlowRebalancer<GainCache> *flow_rebalancer =
+      dynamic_cast<RoundStaticFlowRebalancer<GainCache> *>(
+          _source_side_rebalanced_cut ? _source_side_rebalancer.get() : _sink_side_rebalancer.get()
+      );
+
+  const RebalanceResult rebalancer_result =
+      flow_rebalancer->rebalance_cut(_source_side_rebalanced_cut, _rebalanced_cut_state);
+  if (!rebalancer_result.balanced) {
+    DBG << "Final rebalancing failed to produce a balanced cut";
+    return;
+  }
+
+  const EdgeWeight total_gain = _rebalanced_cut_flow_cutter_gain + rebalancer_result.gain;
+  DBG << "Rebalanced best imbalanced "
+      << (_source_side_rebalanced_cut ? "source-side" : "sink-side") << " cut with gain "
+      << total_gain << " (prev: " << _gain << ")";
+
+  if (total_gain > _gain) {
+    SCOPED_TIMER("Compute Moves");
+
+    _gain = total_gain;
+    _improve_balance = false;
+    save_rebalancing_moves(rebalancer_result, border_region, flow_network, flow_rebalancer);
+  }
+}
+
+void FlowCutter::store_rebalancing_cut(const bool source_side_cut) {
+  _source_side_rebalanced_cut = source_side_cut;
+
+  const NodeStatus &node_state = max_preflow_algorithm()->node_status();
+  const std::span<const NodeID> nodes =
+      source_side_cut ? node_state.source_nodes() : node_state.sink_nodes();
+
+  _rebalanced_cut_state.reset();
+  for (const NodeID u_local : nodes) {
+    _rebalanced_cut_state.set(u_local);
+  }
+}
+
+void FlowCutter::save_rebalancing_moves(
+    const RebalanceResult rebalancer_result,
+    const BorderRegion &border_region,
+    const FlowNetwork &flow_network,
+    FlowRebalancer *flow_rebalancer
+) {
+  _moves.clear();
+
+  const BlockID block1 = border_region.block1();
+  const BlockID block2 = border_region.block2();
+
+  const BlockID overloaded_block = rebalancer_result.overloaded_block;
+  const DeltaPartitionedCSRGraph &d_graph = flow_rebalancer->d_graph();
+
+  for (const NodeID u : border_region.nodes_region1()) {
+    const BlockID u_block = d_graph.block(u);
+
+    if (u_block != block1) {
+      _moves.emplace_back(u, block1, u_block);
+    };
+  }
+
+  for (const NodeID u : border_region.nodes_region2()) {
+    const BlockID u_block = d_graph.block(u);
+
+    if (u_block != block2) {
+      _moves.emplace_back(u, block2, u_block);
+    };
+  }
+
+  for (const auto &[u, target_block] : rebalancer_result.moves) {
+    if (flow_network.global_to_local_mapping.contains(u)) {
+      continue;
+    }
+
+    _moves.emplace_back(u, overloaded_block, target_block);
+  }
 }
 
 [[nodiscard]] MaxPreflowAlgorithm *FlowCutter::max_preflow_algorithm() {

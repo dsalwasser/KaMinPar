@@ -70,6 +70,17 @@ private:
       FlowRebalancer *flow_rebalancer
   );
 
+  void rebalance_best_cut(const BorderRegion &border_region, const FlowNetwork &flow_network);
+
+  void store_rebalancing_cut(bool source_side_cut);
+
+  void save_rebalancing_moves(
+      const RebalanceResult rebalancer_result,
+      const BorderRegion &border_region,
+      const FlowNetwork &flow_network,
+      FlowRebalancer *flow_rebalancer
+  );
+
   [[nodiscard]] MaxPreflowAlgorithm *max_preflow_algorithm();
 
 private:
@@ -101,6 +112,11 @@ private:
   bool _initialized_sink_side_rebalancer;
   std::unique_ptr<FlowRebalancer> _source_side_rebalancer;
   std::unique_ptr<FlowRebalancer> _sink_side_rebalancer;
+
+  bool _found_rebalanced_cut;
+  bool _source_side_rebalanced_cut;
+  EdgeWeight _rebalanced_cut_flow_cutter_gain;
+  Marker<> _rebalanced_cut_state;
 
   EdgeWeight _gain;
   bool _improve_balance;

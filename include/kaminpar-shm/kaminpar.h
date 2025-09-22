@@ -301,7 +301,9 @@ enum class FlowRebalancerKind {
 
 struct FlowRebalancerContext {
   bool enabled;
+
   FlowRebalancerKind kind;
+  bool rebalance_final_cut;
 
   bool abort_on_candidate_cut;
   bool abort_on_improved_cut;
