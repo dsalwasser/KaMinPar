@@ -135,7 +135,7 @@ public:
 
 private:
   std::span<const Move> fetch_precomputed_moves(const BlockID block) {
-    auto state = _shared_ctx.precompute_state(_block1);
+    auto state = _shared_ctx.precompute_state(block);
     if (state == SharedFlowRebalancerContext::kPendingInitialization) {
       do {
         state = _shared_ctx.precompute_state(block);
