@@ -223,19 +223,18 @@ Context create_default_context() {
                                       .construction =
                                           {
                                               .deterministic = false,
-                                              .small_graph_threshold = 65536,
+                                              .small_graph_threshold = 131072,
                                               .border_region_scaling_factor = 16,
-                                              .max_border_distance = 20,
+                                              .max_border_distance = 10,
                                           },
                                       .flow_cutter =
                                           {
                                               .use_whfc = false,
                                               .abort_on_first_cut = false,
-                                              .small_flow_network_threshold = 65536,
+                                              .small_flow_network_threshold = 131072,
                                               .flow =
                                                   {
-                                                      .global_relabeling_heuristic = true,
-                                                      .global_relabeling_frequency = 1,
+                                                      .global_relabeling_frequency = 3,
                                                       .parallel_blocking_resolution = false,
                                                       .sequential_discharge_threshold = 1024,
                                                   },
@@ -301,19 +300,18 @@ Context create_default_context() {
                               .construction =
                                   {
                                       .deterministic = false,
-                                      .small_graph_threshold = 65536,
+                                      .small_graph_threshold = 131072,
                                       .border_region_scaling_factor = 16,
-                                      .max_border_distance = 20,
+                                      .max_border_distance = 10,
                                   },
                               .flow_cutter =
                                   {
                                       .use_whfc = false,
                                       .abort_on_first_cut = false,
-                                      .small_flow_network_threshold = 65536,
+                                      .small_flow_network_threshold = 131072,
                                       .flow =
                                           {
-                                              .global_relabeling_heuristic = true,
-                                              .global_relabeling_frequency = 1,
+                                              .global_relabeling_frequency = 3,
                                               .parallel_blocking_resolution = false,
                                               .sequential_discharge_threshold = 1024,
                                           },
@@ -382,7 +380,7 @@ Context create_default_context() {
                       .min_round_improvement_factor = 0.001,
                       .max_num_rounds = std::numeric_limits<std::size_t>::max(),
                       .time_limit = std::numeric_limits<std::size_t>::max(),
-                      .run_sequentially = true,
+                      .run_sequentially = false,
                       .free_memory_after_round = false,
                       .scheduler =
                           {
@@ -396,19 +394,18 @@ Context create_default_context() {
                       .construction =
                           {
                               .deterministic = false,
-                              .small_graph_threshold = 65536,
+                              .small_graph_threshold = 131072,
                               .border_region_scaling_factor = 16,
-                              .max_border_distance = 20,
+                              .max_border_distance = 10,
                           },
                       .flow_cutter =
                           {
                               .use_whfc = false,
                               .abort_on_first_cut = false,
-                              .small_flow_network_threshold = 65536,
+                              .small_flow_network_threshold = 131072,
                               .flow =
                                   {
-                                      .global_relabeling_heuristic = true,
-                                      .global_relabeling_frequency = 1,
+                                      .global_relabeling_frequency = 3,
                                       .parallel_blocking_resolution = false,
                                       .sequential_discharge_threshold = 1024,
                                   },

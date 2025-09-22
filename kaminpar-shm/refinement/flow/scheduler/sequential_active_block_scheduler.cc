@@ -10,9 +10,10 @@
 namespace kaminpar::shm {
 
 SequentialActiveBlockScheduler::SequentialActiveBlockScheduler(
-    const TwowayFlowRefinementContext &f_ctx
+    const ParallelContext &par_ctx, const TwowayFlowRefinementContext &f_ctx
 )
-    : _f_ctx(f_ctx),
+    : _par_ctx(par_ctx),
+      _f_ctx(f_ctx),
       _active_block_scheduling(f_ctx.scheduler) {}
 
 bool SequentialActiveBlockScheduler::refine(
@@ -47,6 +48,8 @@ bool SequentialActiveBlockScheduler::refine(
       p_ctx, _f_ctx, quotient_graph, p_graph, graph, _gain_cache, rebalancer_ctx, start_time
   );
 
+  const bool run_sequentially = _f_ctx.run_sequentially || _par_ctx.num_threads == 1;
+
   std::size_t num_round = 0;
   bool found_improvement = false;
 
@@ -73,7 +76,7 @@ bool SequentialActiveBlockScheduler::refine(
       IF_STATS _stats.num_searches += 1;
       DBG << "Scheduling block pair " << block1 << " and " << block2;
 
-      const Result result = refiner.refine(block1, block2, _f_ctx.run_sequentially);
+      const Result result = refiner.refine(block1, block2, run_sequentially);
 
       if (result.time_limit_exceeded) {
         LOG_WARNING << "Time limit exceeded during flow refinement";

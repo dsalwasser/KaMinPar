@@ -277,9 +277,7 @@ struct FlowNetworkConstructionContext {
 };
 
 struct PreflowPushContext {
-  bool global_relabeling_heuristic;
   double global_relabeling_frequency;
-
   bool parallel_blocking_resolution;
   NodeID sequential_discharge_threshold;
 };

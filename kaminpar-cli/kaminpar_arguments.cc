@@ -720,14 +720,6 @@ CLI::Option_group *create_twoway_flow_refinement_options(CLI::App *app, Context 
       ->capture_default_str();
   twoway_flow
       ->add_option(
-          "--r-twoway-flow-global-relabel-heuristic",
-          ctx.refinement.twoway_flow.flow_cutter.flow.global_relabeling_heuristic,
-          "If set, enables the global relabeling heuristic during the preflow-push algorithm."
-
-      )
-      ->capture_default_str();
-  twoway_flow
-      ->add_option(
           "--r-twoway-flow-global-relabel-frequency",
           ctx.refinement.twoway_flow.flow_cutter.flow.global_relabeling_frequency,
           "Specifies how often the global relabeling heuristic is triggered."
