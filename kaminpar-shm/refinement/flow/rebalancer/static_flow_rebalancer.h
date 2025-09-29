@@ -8,7 +8,10 @@
 #include "kaminpar-shm/refinement/flow/flow_network/flow_network.h"
 #include "kaminpar-shm/refinement/flow/rebalancer/flow_rebalancer.h"
 
+#include "kaminpar-common/datastructures/marker.h"
 #include "kaminpar-common/datastructures/scalable_vector.h"
+#include "kaminpar-common/datastructures/static_array.h"
+#include "kaminpar-common/sort.h"
 #include "kaminpar-common/timer.h"
 
 namespace kaminpar::shm {
@@ -24,16 +27,21 @@ template <typename GainCache> class StaticFlowRebalancer : public FlowRebalancer
 public:
   using Move = Base::Move;
   using Result = Base::Result;
+  using RelativeGain = Base::RelativeGain;
   using DeltaGainCache = Base::DeltaGainCache;
 
   StaticFlowRebalancer(
+      const FlowRebalancerContext &fr_ctx,
       const PartitionedCSRGraph &p_graph,
       const GainCache &gain_cache,
       const std::span<const BlockWeight> max_block_weights,
       SharedFlowRebalancerContext &shared_ctx
   )
       : Base(p_graph, gain_cache, max_block_weights),
-        _shared_ctx(shared_ctx) {}
+        _fr_ctx(fr_ctx),
+        _shared_ctx(shared_ctx),
+        _marker(p_graph.n()),
+        _relative_gains(p_graph.n()) {}
 
   void initialize(
       const bool source_side_cut, const BorderRegion &border_region, const FlowNetwork &flow_network
@@ -81,12 +89,22 @@ public:
     if (_source_side_moves) {
       if (!_initialized_source_side_moves) {
         _initialized_source_side_moves = true;
-        compute_move_order(_block1, _precomputed_source_side_moves);
+
+        if (_fr_ctx.relaxed_move_order) {
+          compute_relaxed_move_order(_block1, _precomputed_source_side_moves);
+        } else {
+          compute_move_order(_block1, _precomputed_source_side_moves);
+        }
       }
     } else {
       if (!_initialized_sink_side_moves) {
         _initialized_sink_side_moves = true;
-        compute_move_order(_block2, _precomputed_sink_side_moves);
+
+        if (_fr_ctx.relaxed_move_order) {
+          compute_relaxed_move_order(_block2, _precomputed_sink_side_moves);
+        } else {
+          compute_move_order(_block2, _precomputed_sink_side_moves);
+        }
       }
     }
 
@@ -211,6 +229,72 @@ private:
     };
   }
 
+  void compute_relaxed_move_order(const BlockID overloaded_block, ScalableVector<Move> &moves) {
+    SCOPED_TIMER("Compute Move Order");
+
+    TIMED_SCOPE("Update State") {
+      _virtual_moves.clear();
+
+      for (const auto &[u, _] : _flow_network->global_to_local_mapping.entries()) {
+        const BlockID u_block = _d_graph.block(u);
+        if (u_block == overloaded_block) {
+          continue;
+        }
+
+        _d_graph.set_block(u, overloaded_block);
+        _gain_cache.move(u, u_block, overloaded_block);
+
+        _virtual_moves.emplace_back(u, u_block);
+      }
+    };
+
+    TIMED_SCOPE("Insert Nodes") {
+      moves.clear();
+      _marker.reset();
+
+      const std::span<const NodeID> candidate_nodes =
+          _source_side_moves ? _border_region->nodes_region2() : _border_region->nodes_region1();
+      for (const NodeID u : candidate_nodes) {
+        if (_d_graph.block(u) == overloaded_block) {
+          const auto [target_block, relative_gain] = Base::compute_best_move(u);
+          if (target_block == kInvalidBlockID) {
+            continue;
+          }
+
+          moves.emplace_back(u, target_block);
+          _marker.set(u);
+          _relative_gains[u] = relative_gain;
+        }
+      }
+
+      for (const NodeID u : _shared_ctx.nodes_in_block(overloaded_block)) {
+        if (_d_graph.block(u) == overloaded_block && !_marker.get(u)) {
+          const auto [target_block, relative_gain] = Base::compute_best_move(u);
+          if (target_block == kInvalidBlockID) {
+            continue;
+          }
+
+          moves.emplace_back(u, target_block);
+          _marker.set(u);
+          _relative_gains[u] = relative_gain;
+        }
+      }
+    };
+
+    TIMED_SCOPE("Sort") {
+      sorting::sort(moves.begin(), moves.end(), [&](auto &move1, auto &move2) {
+        return _relative_gains[move1.node] > _relative_gains[move2.node];
+      });
+    };
+
+    TIMED_SCOPE("Revert Moves") {
+      for (const auto &[u, u_block] : _virtual_moves) {
+        _d_graph.set_block(u, u_block);
+        _gain_cache.move(u, overloaded_block, u_block);
+      }
+    };
+  }
+
   [[nodiscard]] const DeltaPartitionedCSRGraph &d_graph() const override {
     return _d_graph;
   }
@@ -234,6 +318,8 @@ private:
   }
 
 private:
+  const FlowRebalancerContext &_fr_ctx;
+
   bool _source_side_cut;
   const FlowNetwork *_flow_network;
   const BorderRegion *_border_region;
@@ -248,6 +334,9 @@ private:
 
   ScalableVector<Move> _precomputed_source_side_moves;
   ScalableVector<Move> _precomputed_sink_side_moves;
+
+  Marker<> _marker;
+  StaticArray<RelativeGain> _relative_gains;
 
   bool _source_side_moves;
   ScalableVector<Move> _moves;

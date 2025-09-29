@@ -303,6 +303,7 @@ struct FlowRebalancerContext {
   bool enabled;
 
   FlowRebalancerKind kind;
+  bool relaxed_move_order;
   bool rebalance_final_cut;
 
   bool abort_on_candidate_cut;

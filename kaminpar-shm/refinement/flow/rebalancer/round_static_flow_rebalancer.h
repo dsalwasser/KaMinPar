@@ -10,6 +10,7 @@
 
 #include "kaminpar-common/datastructures/marker.h"
 #include "kaminpar-common/datastructures/scalable_vector.h"
+#include "kaminpar-common/sort.h"
 #include "kaminpar-common/timer.h"
 
 namespace kaminpar::shm {
@@ -26,16 +27,21 @@ class RoundStaticFlowRebalancer : public FlowRebalancerBase<GainCache> {
 public:
   using Move = Base::Move;
   using Result = Base::Result;
+  using RelativeGain = Base::RelativeGain;
   using DeltaGainCache = Base::DeltaGainCache;
 
   RoundStaticFlowRebalancer(
+      const FlowRebalancerContext &fr_ctx,
       const PartitionedCSRGraph &p_graph,
       const GainCache &gain_cache,
       const std::span<const BlockWeight> max_block_weights,
       SharedFlowRebalancerContext &shared_ctx
   )
       : Base(p_graph, gain_cache, max_block_weights),
-        _shared_ctx(shared_ctx) {}
+        _fr_ctx(fr_ctx),
+        _shared_ctx(shared_ctx),
+        _marker(p_graph.n()),
+        _relative_gains(p_graph.n()) {}
 
   void initialize(
       const bool source_side_cut, const BorderRegion &border_region, const FlowNetwork &flow_network
@@ -214,7 +220,11 @@ private:
         state = _shared_ctx.precompute_state(block);
       } while (state == SharedFlowRebalancerContext::kPendingInitialization);
     } else if (state == SharedFlowRebalancerContext::kUninitialized) {
-      precompute_moves(block);
+      if (_fr_ctx.relaxed_move_order) {
+        precompute_relaxed_moves(block);
+      } else {
+        precompute_moves(block);
+      }
     }
 
     return _shared_ctx.precomputed_moves(block);
@@ -250,6 +260,40 @@ private:
     _shared_ctx.mark_moves_precomputed(block);
   }
 
+  void precompute_relaxed_moves(const BlockID block) {
+    SCOPED_TIMER("Compute Move Order");
+
+    _d_graph.clear();
+    _gain_cache.clear();
+
+    ScalableVector<Move> &moves = _shared_ctx.precomputed_moves(block);
+    moves.clear();
+
+    TIMED_SCOPE("Insert Nodes") {
+      _marker.reset();
+      for (const NodeID u : _shared_ctx.nodes_in_block(block)) {
+        if (_d_graph.block(u) == block && !_marker.get(u)) {
+          const auto [target_block, relative_gain] = Base::compute_best_move(u);
+          if (target_block == kInvalidBlockID) {
+            continue;
+          }
+
+          moves.emplace_back(u, target_block);
+          _marker.set(u);
+          _relative_gains[u] = relative_gain;
+        }
+      }
+    };
+
+    TIMED_SCOPE("Sort") {
+      sorting::sort(moves.begin(), moves.end(), [&](auto &move1, auto &move2) {
+        return _relative_gains[move1.node] > _relative_gains[move2.node];
+      });
+    };
+
+    _shared_ctx.mark_moves_precomputed(block);
+  }
+
   void initialize_state() {
     SCOPED_TIMER("Initialize State");
 
@@ -268,6 +312,8 @@ private:
   }
 
 private:
+  const FlowRebalancerContext &_fr_ctx;
+
   bool _source_side_cut;
   const FlowNetwork *_flow_network;
   const BorderRegion *_border_region;
@@ -278,6 +324,9 @@ private:
 
   std::span<const Move> _precomputed_block1_moves;
   std::span<const Move> _precomputed_block2_moves;
+
+  Marker<> _marker;
+  StaticArray<RelativeGain> _relative_gains;
 
   bool _source_side_moves;
   ScalableVector<Move> _moves;

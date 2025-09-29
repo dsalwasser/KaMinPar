@@ -114,10 +114,9 @@ private:
 };
 
 template <typename GainCache> class FlowRebalancerBase : public FlowRebalancer {
+public:
   using RelativeGain = float;
   using PriorityQueue = BinaryMaxHeap<RelativeGain>;
-
-public:
   using DeltaGainCache = GenericDeltaGainCache<GainCache>;
 
   FlowRebalancerBase(
@@ -172,7 +171,6 @@ public:
     _priority_queue.clear();
   }
 
-private:
   void update_node(const NodeID u) {
     if (!_priority_queue.contains(u)) {
       return;

@@ -56,13 +56,14 @@ option(KAMINPAR_BUILD_WITH_MTUNE_NATIVE "Build with -mtune=native." ON)
 
 option(KAMINPAR_BUILD_WITH_KASSERT "Use KASSERT for assertions. If disabled, the assertion level is ignored." ON)
 option(KAMINPAR_BUILD_WITH_SPARSEHASH "Build with Google Sparsehash." ON)
+option(KAMINPAR_BUILD_WITH_IPS4O "Build with ips4o." ON)
 option(KAMINPAR_BUILD_WITH_WHFC "Build with Weighted HyperFlowCutter." OFF)
 option(KAMINPAR_BUILD_WITH_MTKAHYPAR "If Mt-KaHyPar can be found, build the Mt-KaHyPar initial partitioner." OFF)
 option(KAMINPAR_BUILD_WITH_BACKWARD "Build with backward-cpp for stack traces (distributed partitioner only)." OFF)
 
 # Control whether to install KaMinPar
 #####################################
-option(INSTALL_KAMINPAR "Install KaMinPar." ON)
+option(INSTALL_KAMINPAR "Install KaMinPar." OFF)
 
 # Control data type sizes
 #########################
@@ -333,6 +334,18 @@ if(KAMINPAR_BUILD_WITH_CCACHE)
   if(CCACHE_PROGRAM)
     set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
   endif()
+endif()
+
+if(KAMINPAR_BUILD_WITH_IPS4O)
+  FetchContent_Declare(
+    ips4o
+    GIT_REPOSITORY https://github.com/ips4o/ips4o.git
+    GIT_TAG 08a5b926ee65cef19139057c6bde02bb5542c1cb
+    EXCLUDE_FROM_ALL
+    GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(ips4o)
+  list(APPEND KAMINPAR_DEFINITIONS "-DKAMINPAR_IPS4O_FOUND")
+  list(APPEND KAMINPAR_DEFINITIONS "-D_REENTRANT")
 endif()
 
 # We use Google Sparsehash for hash tables

@@ -45,18 +45,18 @@ FlowCutter::FlowCutter(
       break;
     case FlowRebalancerKind::STATIC:
       _source_side_rebalancer = std::make_unique<StaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
+          fc_ctx.rebalancer, p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       _sink_side_rebalancer = std::make_unique<StaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
+          fc_ctx.rebalancer, p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       break;
     case FlowRebalancerKind::ROUND_STATIC:
       _source_side_rebalancer = std::make_unique<RoundStaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
+          fc_ctx.rebalancer, p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       _sink_side_rebalancer = std::make_unique<RoundStaticFlowRebalancer<GainCache>>(
-          p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
+          fc_ctx.rebalancer, p_graph, gain_cache, p_ctx.max_block_weights(), rebalancer_context
       );
       break;
     }

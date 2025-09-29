@@ -830,6 +830,8 @@ std::ostream &operator<<(std::ostream &out, const RefinementContext &r_ctx) {
     if (r_ctx.twoway_flow.flow_cutter.rebalancer.enabled) {
       out << "    Kind:                     " << r_ctx.twoway_flow.flow_cutter.rebalancer.kind
           << "\n";
+      out << "    Relaxed move order:       "
+          << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.relaxed_move_order) << "\n";
       out << "    Rebalance final cut:      "
           << yn(r_ctx.twoway_flow.flow_cutter.rebalancer.rebalance_final_cut) << "\n";
       out << "    Abort on first cut:       "
